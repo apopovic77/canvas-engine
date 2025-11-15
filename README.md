@@ -1,4 +1,4 @@
-# @arkturian/canvas-engine
+# arkturian-canvas-engine
 
 High-performance canvas-based rendering engine with viewport transform, layout system, and interactive controls.
 
@@ -14,17 +14,17 @@ High-performance canvas-based rendering engine with viewport transform, layout s
 ## Installation
 
 ```bash
-npm install @arkturian/canvas-engine
+npm install arkturian-canvas-engine
 ```
 
 ## Quick Start
 
 ```tsx
-import { 
-  ViewportTransform, 
-  CanvasRenderer, 
-  LayoutService 
-} from '@arkturian/canvas-engine';
+import {
+  ViewportTransform,
+  CanvasRenderer,
+  LayoutService
+} from 'arkturian-canvas-engine';
 
 // Initialize viewport
 const canvas = document.getElementById('myCanvas') as HTMLCanvasElement;

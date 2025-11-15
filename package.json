@@ -1,5 +1,5 @@
 {
-  "name": "@arkturian/canvas-engine",
+  "name": "arkturian-canvas-engine",
   "version": "1.0.0",
   "description": "High-performance canvas-based rendering engine with zoom, pan, and layout system",
   "main": "dist/index.js",
