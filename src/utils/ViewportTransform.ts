@@ -278,13 +278,13 @@ export class ViewportTransform {
   private setupEventListeners() {
     // Mouse wheel zoom
     this.canvas.addEventListener('wheel', this.handleWheel, { passive: false });
-    
+
     // Pan with mouse drag
     this.canvas.addEventListener('mousedown', this.handleMouseDown);
     this.canvas.addEventListener('mousemove', this.handleMouseMove);
     this.canvas.addEventListener('mouseup', this.handleMouseUp);
     this.canvas.addEventListener('mouseleave', this.handleMouseUp);
-    
+
     // Touch support (passive: false to enable preventDefault for iOS)
     this.canvas.addEventListener('touchstart', this.handleTouchStart, { passive: false });
     this.canvas.addEventListener('touchmove', this.handleTouchMove, { passive: false });
