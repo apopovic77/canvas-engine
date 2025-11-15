@@ -1,0 +1,53 @@
+{
+  "name": "@arkturian/canvas-engine",
+  "version": "1.0.0",
+  "description": "High-performance canvas-based rendering engine with zoom, pan, and layout system",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "echo \"No tests yet\" && exit 0",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "canvas",
+    "rendering",
+    "engine",
+    "zoom",
+    "pan",
+    "viewport",
+    "layout",
+    "react",
+    "typescript",
+    "2d",
+    "graphics",
+    "interactive"
+  ],
+  "author": "Arkturian <hello@arkturian.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apopovic77/canvas-engine"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "dependencies": {
+    "arkturian-typescript-utils": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "typescript": "~5.9.3"
+  }
+}
