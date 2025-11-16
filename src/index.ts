@@ -17,5 +17,14 @@ export { PivotGroup } from './layout/PivotGroup';
 // Components
 export { AppPreloaderWrapper } from './components/AppPreloaderWrapper';
 
+// React Hooks
+export { useLODTransitions } from './hooks/useLODTransitions';
+export type { LODMode, LODTransitionState } from './hooks/useLODTransitions';
+
+export { useInactivityTimer } from './hooks/useInactivityTimer';
+
+export { useImageCache } from './hooks/useImageCache';
+export type { HighResImageConfig } from './hooks/useImageCache';
+
 // Re-export Vector2 for convenience
 export { Vector2 } from 'arkturian-typescript-utils';
