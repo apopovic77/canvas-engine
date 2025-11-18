@@ -19,6 +19,10 @@ export class ViewportTransform {
   private targetScale = 1;
   private targetOffset = new Vector2(0, 0);
 
+  // Zoom focus point (screen coordinates) - used to maintain zoom-to-point during interpolation
+  private zoomFocus: Vector2 | null = null;
+  private zoomFocusWorld: Vector2 | null = null; // The world position that should stay under zoomFocus
+
   // Interpolation speed (0-1, higher = faster, e.g., 0.15 means 15% per frame)
   public speedFactor = 0.15;
 
@@ -132,11 +136,28 @@ export class ViewportTransform {
     }
 
     // Interpolate scale
+    const oldScale = this.scale;
     this.scale += (this.targetScale - this.scale) * this.speedFactor;
 
-    // Interpolate offset
-    this.offset.x += (this.targetOffset.x - this.offset.x) * this.speedFactor;
-    this.offset.y += (this.targetOffset.y - this.offset.y) * this.speedFactor;
+    // If we have a zoom focus point, recalculate offset to keep world point under cursor
+    if (this.zoomFocus && this.zoomFocusWorld) {
+      // Calculate offset to keep zoomFocusWorld under zoomFocus at current scale
+      this.offset.x = this.zoomFocus.x - this.zoomFocusWorld.x * this.scale;
+      this.offset.y = this.zoomFocus.y - this.zoomFocusWorld.y * this.scale;
+
+      // Clear zoom focus when we're close to target scale (within 1%)
+      if (Math.abs(this.scale - this.targetScale) < 0.01) {
+        this.zoomFocus = null;
+        this.zoomFocusWorld = null;
+        // Sync target offset to current offset
+        this.targetOffset.x = this.offset.x;
+        this.targetOffset.y = this.offset.y;
+      }
+    } else {
+      // Normal offset interpolation
+      this.offset.x += (this.targetOffset.x - this.offset.x) * this.speedFactor;
+      this.offset.y += (this.targetOffset.y - this.offset.y) * this.speedFactor;
+    }
   }
 
   getTargetScale(): number {
@@ -328,16 +349,20 @@ export class ViewportTransform {
     const delta = -e.deltaY * 0.002;
     const newScale = Math.max(this.minScale, Math.min(this.maxScale, this.targetScale * (1 + delta)));
 
-    // Zoom towards mouse position
+    // Zoom towards mouse position - store focus point for smooth interpolation
     const rect = this.canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    // Adjust target offset to zoom towards mouse position
-    const scaleFactor = newScale / this.targetScale;
-    this.targetOffset.x = mouseX - (mouseX - this.targetOffset.x) * scaleFactor;
-    this.targetOffset.y = mouseY - (mouseY - this.targetOffset.y) * scaleFactor;
+    // Calculate world position under mouse (using CURRENT scale and offset, not target)
+    const worldX = (mouseX - this.offset.x) / this.scale;
+    const worldY = (mouseY - this.offset.y) / this.scale;
 
+    // Store zoom focus (screen point) and corresponding world point
+    this.zoomFocus = new Vector2(mouseX, mouseY);
+    this.zoomFocusWorld = new Vector2(worldX, worldY);
+
+    // Set target scale (offset will be calculated in update())
     this.targetScale = newScale;
   };
   
@@ -418,10 +443,13 @@ export class ViewportTransform {
       const scaleFactor = distance / this.touchStartDistance;
       const newScale = Math.max(this.minScale, Math.min(this.maxScale, this.touchStartScale * scaleFactor));
 
-      // Zoom towards the midpoint between fingers (iOS-style pinch-to-zoom)
-      const scaleRatio = newScale / this.targetScale;
-      this.targetOffset.x = this.touchStartCenter.x - (this.touchStartCenter.x - this.targetOffset.x) * scaleRatio;
-      this.targetOffset.y = this.touchStartCenter.y - (this.touchStartCenter.y - this.targetOffset.y) * scaleRatio;
+      // Calculate world position under pinch center (using CURRENT scale and offset)
+      const worldX = (this.touchStartCenter.x - this.offset.x) / this.scale;
+      const worldY = (this.touchStartCenter.y - this.offset.y) / this.scale;
+
+      // Store zoom focus for smooth interpolation
+      this.zoomFocus = new Vector2(this.touchStartCenter.x, this.touchStartCenter.y);
+      this.zoomFocusWorld = new Vector2(worldX, worldY);
 
       this.targetScale = newScale;
     } else if (e.touches.length === 1 && this.isDragging) {
