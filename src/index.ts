@@ -5,6 +5,10 @@ export { CanvasRenderer } from './render/CanvasRenderer';
 export { ViewportTransform } from './utils/ViewportTransform';
 export type { ContentBounds } from './utils/ViewportTransform';
 
+// Viewport Culling
+export { ViewportCulling } from './utils/ViewportCulling';
+export type { WorldRect, ViewportBounds, CullingStats } from './utils/ViewportCulling';
+
 // Layout System
 export { LayoutService } from './services/LayoutService';
 export { ViewportService } from './services/ViewportService';
@@ -13,6 +17,10 @@ export { ViewportService } from './services/ViewportService';
 export { PivotLayouter } from './layout/PivotLayouter';
 export { HeroLayouter } from './layout/HeroLayouter';
 export { PivotGroup } from './layout/PivotGroup';
+export { LayoutEngine } from './layout/LayoutEngine';
+export type { ILayouter } from './layout/LayoutEngine';
+export { DayStackLayouter } from './layout/DayStackLayouter';
+export type { DayStackLayoutConfig, DayAxisLabel } from './layout/DayStackLayouter';
 
 // Components
 export { AppPreloaderWrapper } from './components/AppPreloaderWrapper';

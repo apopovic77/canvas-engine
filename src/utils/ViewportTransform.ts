@@ -31,6 +31,7 @@ export class ViewportTransform {
   private rubberBandResistance = 0.5; // 0-1, how much resistance (higher = more resistance)
   private rubberBandSpringBack = 0.08; // Speed of spring back (higher = faster)
   private lockVerticalPan = false; // If true, disable vertical panning and rubber banding
+  private enableTranslationBounds = true; // If false, disable translation bounds checking (for Snap-to-Content mode)
 
   // Content bounds for bounds checking
   private contentBounds: ContentBounds | null = null;
@@ -73,6 +74,10 @@ export class ViewportTransform {
     this.lockVerticalPan = lock;
   }
 
+  setEnableTranslationBounds(enable: boolean): void {
+    this.enableTranslationBounds = enable;
+  }
+
   /**
    * Calculate the scale needed to fit all content in viewport
    * Also sets maxScale so a product can be at most 2× screen height
@@ -96,8 +101,8 @@ export class ViewportTransform {
     if (this.contentBounds.maxItemHeight && this.contentBounds.maxItemHeight > 0) {
       this.maxScale = (this.viewportHeight * 2) / this.contentBounds.maxItemHeight;
     } else {
-      // Fallback if no maxItemHeight provided
-      this.maxScale = this.fitToContentScale * 4;
+      // Fallback if no maxItemHeight provided - allow extreme zoom (200x)
+      this.maxScale = this.fitToContentScale * 200;
     }
   }
 
@@ -195,6 +200,9 @@ export class ViewportTransform {
     // Clamp scale first (no rubber banding for scale, just hard limits)
     this.targetScale = Math.max(this.minScale, Math.min(this.maxScale, this.targetScale));
 
+    // Skip translation bounds if disabled (for Snap-to-Content mode)
+    if (!this.enableTranslationBounds) return;
+
     const bounds = this.calculateBounds();
     if (!bounds) return;
 
@@ -236,6 +244,15 @@ export class ViewportTransform {
    */
   private applyDragResistance(dx: number, dy: number): { dx: number; dy: number } {
     if (!this.enableRubberBanding) return { dx, dy };
+
+    // Skip translation bounds if disabled (for Snap-to-Content mode)
+    if (!this.enableTranslationBounds) {
+      // Still respect vertical pan lock even when translation bounds are disabled
+      if (this.lockVerticalPan) {
+        return { dx, dy: 0 };
+      }
+      return { dx, dy };
+    }
 
     const bounds = this.calculateBounds();
     if (!bounds) return { dx, dy };
