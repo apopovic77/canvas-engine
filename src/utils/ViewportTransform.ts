@@ -29,13 +29,7 @@ export class ViewportTransform {
   // Scale limits
   private fitToContentScale = 1; // Calculated from content bounds
   public maxScale = 2; // Dynamically calculated: fitToContentScale × 2
-
-  // Rubber banding config (iOS-style)
-  private enableRubberBanding = true;
-  private rubberBandResistance = 0.5; // 0-1, how much resistance (higher = more resistance)
-  private rubberBandSpringBack = 0.08; // Speed of spring back (higher = faster)
-  private lockVerticalPan = false; // If true, disable vertical panning and rubber banding
-  private enableTranslationBounds = true; // If false, disable translation bounds checking (for Snap-to-Content mode)
+  private lockVerticalPan = false; // If true, disable vertical panning
 
   // Content bounds for bounds checking
   private contentBounds: ContentBounds | null = null;
@@ -76,10 +70,6 @@ export class ViewportTransform {
    */
   setLockVerticalPan(lock: boolean): void {
     this.lockVerticalPan = lock;
-  }
-
-  setEnableTranslationBounds(enable: boolean): void {
-    this.enableTranslationBounds = enable;
   }
 
   /**
@@ -131,7 +121,6 @@ export class ViewportTransform {
    */
   update(): void {
     // Interpolate scale
-    const oldScale = this.scale;
     this.scale += (this.targetScale - this.scale) * this.speedFactor;
 
     // If we have a zoom focus point, recalculate offset to keep world point under cursor
@@ -152,11 +141,6 @@ export class ViewportTransform {
       // Normal offset interpolation
       this.offset.x += (this.targetOffset.x - this.offset.x) * this.speedFactor;
       this.offset.y += (this.targetOffset.y - this.offset.y) * this.speedFactor;
-
-      // Apply rubber banding / spring back if not dragging (AFTER interpolation)
-      if (!this.isDragging && this.enableRubberBanding) {
-        this.applyRubberBanding();
-      }
     }
   }
 
@@ -168,150 +152,6 @@ export class ViewportTransform {
     return { x: this.targetOffset.x, y: this.targetOffset.y };
   }
 
-  /**
-   * Calculate valid bounds for current scale
-   */
-  private calculateBounds(): {
-    minOffsetX: number;
-    maxOffsetX: number;
-    minOffsetY: number;
-    maxOffsetY: number;
-    centerX: number;
-    centerY: number;
-    shouldCenterX: boolean;
-    shouldCenterY: boolean;
-  } | null {
-    if (!this.contentBounds) return null;
-
-    const scaledWidth = this.contentBounds.width * this.targetScale;
-    const scaledHeight = this.contentBounds.height * this.targetScale;
-
-    // Content smaller than viewport? → Center it
-    const shouldCenterX = scaledWidth < this.viewportWidth;
-    const shouldCenterY = scaledHeight < this.viewportHeight;
-
-    // Center content accounting for its origin (minX, minY)
-    const centerX = (this.viewportWidth - scaledWidth) / 2 - this.contentBounds.minX * this.targetScale;
-    const centerY = (this.viewportHeight - scaledHeight) / 2 - this.contentBounds.minY * this.targetScale;
-
-    // Bounds: account for extended content bounds (e.g., Hero Mode allows edge products to center)
-    // If minX < 0, content was extended to the left → allow panning right (positive maxOffsetX)
-    // If content extends beyond viewport, allow panning left (negative minOffsetX)
-    const maxOffsetX = shouldCenterX ? centerX : -this.contentBounds.minX * this.targetScale;
-    const minOffsetX = shouldCenterX ? centerX : this.viewportWidth - scaledWidth - this.contentBounds.minX * this.targetScale;
-    const maxOffsetY = shouldCenterY ? centerY : -this.contentBounds.minY * this.targetScale;
-    const minOffsetY = shouldCenterY ? centerY : this.viewportHeight - scaledHeight - this.contentBounds.minY * this.targetScale;
-
-    return {
-      minOffsetX,
-      maxOffsetX,
-      minOffsetY,
-      maxOffsetY,
-      centerX,
-      centerY,
-      shouldCenterX,
-      shouldCenterY,
-    };
-  }
-
-  /**
-   * Apply iOS-style rubber banding: spring back to bounds when not dragging
-   */
-  private applyRubberBanding(): void {
-    // Clamp scale first (no rubber banding for scale, just hard limits)
-    this.targetScale = Math.max(this.minScale, Math.min(this.maxScale, this.targetScale));
-
-    // Skip translation bounds if disabled (for Snap-to-Content mode)
-    if (!this.enableTranslationBounds) return;
-
-    const bounds = this.calculateBounds();
-    if (!bounds) return;
-
-    // Spring back to center if content is smaller than viewport
-    if (bounds.shouldCenterX) {
-      const distanceX = bounds.centerX - this.targetOffset.x;
-      this.targetOffset.x += distanceX * this.rubberBandSpringBack;
-    } else {
-      // Spring back if outside bounds
-      if (this.targetOffset.x > bounds.maxOffsetX) {
-        const overflow = this.targetOffset.x - bounds.maxOffsetX;
-        this.targetOffset.x -= overflow * this.rubberBandSpringBack;
-      } else if (this.targetOffset.x < bounds.minOffsetX) {
-        const overflow = bounds.minOffsetX - this.targetOffset.x;
-        this.targetOffset.x += overflow * this.rubberBandSpringBack;
-      }
-    }
-
-    // Skip Y-axis rubber banding if vertical pan is locked
-    if (!this.lockVerticalPan) {
-      if (bounds.shouldCenterY) {
-        const distanceY = bounds.centerY - this.targetOffset.y;
-        this.targetOffset.y += distanceY * this.rubberBandSpringBack;
-      } else {
-        // Spring back if outside bounds
-        if (this.targetOffset.y > bounds.maxOffsetY) {
-          const overflow = this.targetOffset.y - bounds.maxOffsetY;
-          this.targetOffset.y -= overflow * this.rubberBandSpringBack;
-        } else if (this.targetOffset.y < bounds.minOffsetY) {
-          const overflow = bounds.minOffsetY - this.targetOffset.y;
-          this.targetOffset.y += overflow * this.rubberBandSpringBack;
-        }
-      }
-    }
-  }
-
-  /**
-   * Apply resistance when dragging outside bounds (iOS-style rubber band feel)
-   */
-  private applyDragResistance(dx: number, dy: number): { dx: number; dy: number } {
-    if (!this.enableRubberBanding) return { dx, dy };
-
-    // Skip translation bounds if disabled (for Snap-to-Content mode)
-    if (!this.enableTranslationBounds) {
-      // Still respect vertical pan lock even when translation bounds are disabled
-      if (this.lockVerticalPan) {
-        return { dx, dy: 0 };
-      }
-      return { dx, dy };
-    }
-
-    const bounds = this.calculateBounds();
-    if (!bounds) return { dx, dy };
-
-    let resistedDx = dx;
-    let resistedDy = dy;
-
-    // Apply resistance when dragging outside bounds
-    const newOffsetX = this.offsetStart.x + dx;
-    const newOffsetY = this.offsetStart.y + dy;
-
-    // X-axis resistance
-    if (!bounds.shouldCenterX) {
-      if (newOffsetX > bounds.maxOffsetX) {
-        const overflow = newOffsetX - bounds.maxOffsetX;
-        resistedDx = dx - overflow * this.rubberBandResistance;
-      } else if (newOffsetX < bounds.minOffsetX) {
-        const overflow = bounds.minOffsetX - newOffsetX;
-        resistedDx = dx + overflow * this.rubberBandResistance;
-      }
-    }
-
-    // Y-axis resistance (skip if vertical pan is locked)
-    if (!this.lockVerticalPan && !bounds.shouldCenterY) {
-      if (newOffsetY > bounds.maxOffsetY) {
-        const overflow = newOffsetY - bounds.maxOffsetY;
-        resistedDy = dy - overflow * this.rubberBandResistance;
-      } else if (newOffsetY < bounds.minOffsetY) {
-        const overflow = bounds.minOffsetY - newOffsetY;
-        resistedDy = dy + overflow * this.rubberBandResistance;
-      }
-    } else if (this.lockVerticalPan) {
-      // Block vertical dragging completely
-      resistedDy = 0;
-    }
-
-    return { dx: resistedDx, dy: resistedDy };
-  }
 
   private setupEventListeners() {
     // Mouse wheel zoom
@@ -384,11 +224,8 @@ export class ViewportTransform {
       const dx = e.clientX - this.dragStart.x;
       const dy = e.clientY - this.dragStart.y;
 
-      // Apply rubber band resistance when dragging outside bounds
-      const resisted = this.applyDragResistance(dx, dy);
-
-      this.targetOffset.x = this.offsetStart.x + resisted.dx;
-      this.targetOffset.y = this.offsetStart.y + resisted.dy;
+      this.targetOffset.x = this.offsetStart.x + dx;
+      this.targetOffset.y = this.offsetStart.y + (this.lockVerticalPan ? 0 : dy);
     }
   };
   
@@ -458,11 +295,8 @@ export class ViewportTransform {
       const dx = touch.clientX - this.dragStart.x;
       const dy = touch.clientY - this.dragStart.y;
 
-      // Apply rubber band resistance when dragging outside bounds
-      const resisted = this.applyDragResistance(dx, dy);
-
-      this.targetOffset.x = this.offsetStart.x + resisted.dx;
-      this.targetOffset.y = this.offsetStart.y + resisted.dy;
+      this.targetOffset.x = this.offsetStart.x + dx;
+      this.targetOffset.y = this.offsetStart.y + (this.lockVerticalPan ? 0 : dy);
     }
   };
   
