@@ -1,6 +1,6 @@
 {
   "name": "arkturian-canvas-engine",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "High-performance canvas-based rendering engine with zoom, pan, and layout system",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
