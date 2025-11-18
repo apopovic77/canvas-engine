@@ -130,11 +130,6 @@ export class ViewportTransform {
    * Formula: curr += (target - curr) * speedFactor
    */
   update(): void {
-    // Apply rubber banding / spring back if not dragging
-    if (!this.isDragging && this.enableRubberBanding) {
-      this.applyRubberBanding();
-    }
-
     // Interpolate scale
     const oldScale = this.scale;
     this.scale += (this.targetScale - this.scale) * this.speedFactor;
@@ -157,6 +152,11 @@ export class ViewportTransform {
       // Normal offset interpolation
       this.offset.x += (this.targetOffset.x - this.offset.x) * this.speedFactor;
       this.offset.y += (this.targetOffset.y - this.offset.y) * this.speedFactor;
+
+      // Apply rubber banding / spring back if not dragging (AFTER interpolation)
+      if (!this.isDragging && this.enableRubberBanding) {
+        this.applyRubberBanding();
+      }
     }
   }
 
