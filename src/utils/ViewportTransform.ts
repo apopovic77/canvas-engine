@@ -15,21 +15,22 @@ export class ViewportTransform {
   public scale = 1;
   public offset = new Vector2(0, 0);
 
-  // Target values (where we want to go, for panning interpolation)
+  // Target values (where we want to go)
   private targetScale = 1;
   private targetOffset = new Vector2(0, 0);
 
   // Interpolation speed (0-1, higher = faster, e.g., 0.15 means 15% per frame)
-  // Note: Only used for panning, zoom is instant
   public speedFactor = 0.15;
-
-  // Flag to skip interpolation for instant changes (zoom)
-  private skipInterpolation = false;
 
   // Scale limits
   private fitToContentScale = 1; // Calculated from content bounds
   public maxScale = 2; // Dynamically calculated: fitToContentScale × 2
-  private lockVerticalPan = false; // If true, disable vertical panning
+
+  // Rubber banding config (iOS-style)
+  private enableRubberBanding = true;
+  private rubberBandResistance = 0.5; // 0-1, how much resistance (higher = more resistance)
+  private rubberBandSpringBack = 0.08; // Speed of spring back (higher = faster)
+  private lockVerticalPan = false; // If true, disable vertical panning and rubber banding
 
   // Content bounds for bounds checking
   private contentBounds: ContentBounds | null = null;
@@ -95,8 +96,8 @@ export class ViewportTransform {
     if (this.contentBounds.maxItemHeight && this.contentBounds.maxItemHeight > 0) {
       this.maxScale = (this.viewportHeight * 2) / this.contentBounds.maxItemHeight;
     } else {
-      // Fallback if no maxItemHeight provided - allow extreme zoom (200x)
-      this.maxScale = this.fitToContentScale * 200;
+      // Fallback if no maxItemHeight provided
+      this.maxScale = this.fitToContentScale * 4;
     }
   }
 
@@ -118,16 +119,17 @@ export class ViewportTransform {
   /**
    * Smooth interpolation update - call this every frame!
    * Formula: curr += (target - curr) * speedFactor
-   * Note: Zoom is instant, only panning is interpolated
    */
   update(): void {
-    // Skip interpolation if we just did an instant zoom
-    if (this.skipInterpolation) {
-      this.skipInterpolation = false;
-      return;
+    // Apply rubber banding / spring back if not dragging
+    if (!this.isDragging && this.enableRubberBanding) {
+      this.applyRubberBanding();
     }
 
-    // Smooth offset interpolation (for panning only, zoom is instant)
+    // Interpolate scale
+    this.scale += (this.targetScale - this.scale) * this.speedFactor;
+
+    // Interpolate offset
     this.offset.x += (this.targetOffset.x - this.offset.x) * this.speedFactor;
     this.offset.y += (this.targetOffset.y - this.offset.y) * this.speedFactor;
   }
@@ -140,17 +142,149 @@ export class ViewportTransform {
     return { x: this.targetOffset.x, y: this.targetOffset.y };
   }
 
+  /**
+   * Calculate valid bounds for current scale
+   */
+  private calculateBounds(): {
+    minOffsetX: number;
+    maxOffsetX: number;
+    minOffsetY: number;
+    maxOffsetY: number;
+    centerX: number;
+    centerY: number;
+    shouldCenterX: boolean;
+    shouldCenterY: boolean;
+  } | null {
+    if (!this.contentBounds) return null;
+
+    const scaledWidth = this.contentBounds.width * this.targetScale;
+    const scaledHeight = this.contentBounds.height * this.targetScale;
+
+    // Content smaller than viewport? → Center it
+    const shouldCenterX = scaledWidth < this.viewportWidth;
+    const shouldCenterY = scaledHeight < this.viewportHeight;
+
+    // Center content accounting for its origin (minX, minY)
+    const centerX = (this.viewportWidth - scaledWidth) / 2 - this.contentBounds.minX * this.targetScale;
+    const centerY = (this.viewportHeight - scaledHeight) / 2 - this.contentBounds.minY * this.targetScale;
+
+    // Bounds: account for extended content bounds (e.g., Hero Mode allows edge products to center)
+    // If minX < 0, content was extended to the left → allow panning right (positive maxOffsetX)
+    // If content extends beyond viewport, allow panning left (negative minOffsetX)
+    const maxOffsetX = shouldCenterX ? centerX : -this.contentBounds.minX * this.targetScale;
+    const minOffsetX = shouldCenterX ? centerX : this.viewportWidth - scaledWidth - this.contentBounds.minX * this.targetScale;
+    const maxOffsetY = shouldCenterY ? centerY : -this.contentBounds.minY * this.targetScale;
+    const minOffsetY = shouldCenterY ? centerY : this.viewportHeight - scaledHeight - this.contentBounds.minY * this.targetScale;
+
+    return {
+      minOffsetX,
+      maxOffsetX,
+      minOffsetY,
+      maxOffsetY,
+      centerX,
+      centerY,
+      shouldCenterX,
+      shouldCenterY,
+    };
+  }
+
+  /**
+   * Apply iOS-style rubber banding: spring back to bounds when not dragging
+   */
+  private applyRubberBanding(): void {
+    // Clamp scale first (no rubber banding for scale, just hard limits)
+    this.targetScale = Math.max(this.minScale, Math.min(this.maxScale, this.targetScale));
+
+    const bounds = this.calculateBounds();
+    if (!bounds) return;
+
+    // Spring back to center if content is smaller than viewport
+    if (bounds.shouldCenterX) {
+      const distanceX = bounds.centerX - this.targetOffset.x;
+      this.targetOffset.x += distanceX * this.rubberBandSpringBack;
+    } else {
+      // Spring back if outside bounds
+      if (this.targetOffset.x > bounds.maxOffsetX) {
+        const overflow = this.targetOffset.x - bounds.maxOffsetX;
+        this.targetOffset.x -= overflow * this.rubberBandSpringBack;
+      } else if (this.targetOffset.x < bounds.minOffsetX) {
+        const overflow = bounds.minOffsetX - this.targetOffset.x;
+        this.targetOffset.x += overflow * this.rubberBandSpringBack;
+      }
+    }
+
+    // Skip Y-axis rubber banding if vertical pan is locked
+    if (!this.lockVerticalPan) {
+      if (bounds.shouldCenterY) {
+        const distanceY = bounds.centerY - this.targetOffset.y;
+        this.targetOffset.y += distanceY * this.rubberBandSpringBack;
+      } else {
+        // Spring back if outside bounds
+        if (this.targetOffset.y > bounds.maxOffsetY) {
+          const overflow = this.targetOffset.y - bounds.maxOffsetY;
+          this.targetOffset.y -= overflow * this.rubberBandSpringBack;
+        } else if (this.targetOffset.y < bounds.minOffsetY) {
+          const overflow = bounds.minOffsetY - this.targetOffset.y;
+          this.targetOffset.y += overflow * this.rubberBandSpringBack;
+        }
+      }
+    }
+  }
+
+  /**
+   * Apply resistance when dragging outside bounds (iOS-style rubber band feel)
+   */
+  private applyDragResistance(dx: number, dy: number): { dx: number; dy: number } {
+    if (!this.enableRubberBanding) return { dx, dy };
+
+    const bounds = this.calculateBounds();
+    if (!bounds) return { dx, dy };
+
+    let resistedDx = dx;
+    let resistedDy = dy;
+
+    // Apply resistance when dragging outside bounds
+    const newOffsetX = this.offsetStart.x + dx;
+    const newOffsetY = this.offsetStart.y + dy;
+
+    // X-axis resistance
+    if (!bounds.shouldCenterX) {
+      if (newOffsetX > bounds.maxOffsetX) {
+        const overflow = newOffsetX - bounds.maxOffsetX;
+        resistedDx = dx - overflow * this.rubberBandResistance;
+      } else if (newOffsetX < bounds.minOffsetX) {
+        const overflow = bounds.minOffsetX - newOffsetX;
+        resistedDx = dx + overflow * this.rubberBandResistance;
+      }
+    }
+
+    // Y-axis resistance (skip if vertical pan is locked)
+    if (!this.lockVerticalPan && !bounds.shouldCenterY) {
+      if (newOffsetY > bounds.maxOffsetY) {
+        const overflow = newOffsetY - bounds.maxOffsetY;
+        resistedDy = dy - overflow * this.rubberBandResistance;
+      } else if (newOffsetY < bounds.minOffsetY) {
+        const overflow = bounds.minOffsetY - newOffsetY;
+        resistedDy = dy + overflow * this.rubberBandResistance;
+      }
+    } else if (this.lockVerticalPan) {
+      // Block vertical dragging completely
+      resistedDy = 0;
+    }
+
+    return { dx: resistedDx, dy: resistedDy };
+  }
 
   private setupEventListeners() {
     // Mouse wheel zoom
     this.canvas.addEventListener('wheel', this.handleWheel, { passive: false });
-
+    
     // Pan with mouse drag
     this.canvas.addEventListener('mousedown', this.handleMouseDown);
     this.canvas.addEventListener('mousemove', this.handleMouseMove);
     this.canvas.addEventListener('mouseup', this.handleMouseUp);
     this.canvas.addEventListener('mouseleave', this.handleMouseUp);
-
+    
     // Touch support (passive: false to enable preventDefault for iOS)
     this.canvas.addEventListener('touchstart', this.handleTouchStart, { passive: false });
     this.canvas.addEventListener('touchmove', this.handleTouchMove, { passive: false });
@@ -173,31 +307,21 @@ export class ViewportTransform {
   private handleWheel = (e: WheelEvent) => {
     e.preventDefault();
 
-    // Zoom speed for better control
+    // Increased zoom speed for better control (0.002 instead of 0.001)
     const delta = -e.deltaY * 0.002;
-    const newScale = Math.max(this.minScale, Math.min(this.maxScale, this.scale * (1 + delta)));
+    const newScale = Math.max(this.minScale, Math.min(this.maxScale, this.targetScale * (1 + delta)));
 
-    // Zoom towards mouse position - INSTANT, no interpolation
+    // Zoom towards mouse position
     const rect = this.canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    // Calculate world position under mouse (using CURRENT scale and offset)
-    const worldX = (mouseX - this.offset.x) / this.scale;
-    const worldY = (mouseY - this.offset.y) / this.scale;
+    // Adjust target offset to zoom towards mouse position
+    const scaleFactor = newScale / this.targetScale;
+    this.targetOffset.x = mouseX - (mouseX - this.targetOffset.x) * scaleFactor;
+    this.targetOffset.y = mouseY - (mouseY - this.targetOffset.y) * scaleFactor;
 
-    // INSTANT zoom: set scale and offset immediately
-    this.scale = newScale;
     this.targetScale = newScale;
-
-    // Calculate new offset to keep world point under mouse
-    this.offset.x = mouseX - worldX * newScale;
-    this.offset.y = mouseY - worldY * newScale;
-    this.targetOffset.x = this.offset.x;
-    this.targetOffset.y = this.offset.y;
-
-    // Skip next interpolation frame to prevent rubber band effect
-    this.skipInterpolation = true;
   };
   
   private handleMouseDown = (e: MouseEvent) => {
@@ -218,8 +342,11 @@ export class ViewportTransform {
       const dx = e.clientX - this.dragStart.x;
       const dy = e.clientY - this.dragStart.y;
 
-      this.targetOffset.x = this.offsetStart.x + dx;
-      this.targetOffset.y = this.offsetStart.y + (this.lockVerticalPan ? 0 : dy);
+      // Apply rubber band resistance when dragging outside bounds
+      const resisted = this.applyDragResistance(dx, dy);
+
+      this.targetOffset.x = this.offsetStart.x + resisted.dx;
+      this.targetOffset.y = this.offsetStart.y + resisted.dy;
     }
   };
   
@@ -274,30 +401,23 @@ export class ViewportTransform {
       const scaleFactor = distance / this.touchStartDistance;
       const newScale = Math.max(this.minScale, Math.min(this.maxScale, this.touchStartScale * scaleFactor));
 
-      // Calculate world position under pinch center (using CURRENT scale and offset)
-      const worldX = (this.touchStartCenter.x - this.offset.x) / this.scale;
-      const worldY = (this.touchStartCenter.y - this.offset.y) / this.scale;
+      // Zoom towards the midpoint between fingers (iOS-style pinch-to-zoom)
+      const scaleRatio = newScale / this.targetScale;
+      this.targetOffset.x = this.touchStartCenter.x - (this.touchStartCenter.x - this.targetOffset.x) * scaleRatio;
+      this.targetOffset.y = this.touchStartCenter.y - (this.touchStartCenter.y - this.targetOffset.y) * scaleRatio;
 
-      // INSTANT zoom: set scale and offset immediately
-      this.scale = newScale;
       this.targetScale = newScale;
-
-      // Calculate new offset to keep world point under pinch center
-      this.offset.x = this.touchStartCenter.x - worldX * newScale;
-      this.offset.y = this.touchStartCenter.y - worldY * newScale;
-      this.targetOffset.x = this.offset.x;
-      this.targetOffset.y = this.offset.y;
-
-      // Skip next interpolation frame to prevent rubber band effect
-      this.skipInterpolation = true;
     } else if (e.touches.length === 1 && this.isDragging) {
       e.preventDefault();
       const touch = e.touches[0];
       const dx = touch.clientX - this.dragStart.x;
       const dy = touch.clientY - this.dragStart.y;
 
-      this.targetOffset.x = this.offsetStart.x + dx;
-      this.targetOffset.y = this.offsetStart.y + (this.lockVerticalPan ? 0 : dy);
+      // Apply rubber band resistance when dragging outside bounds
+      const resisted = this.applyDragResistance(dx, dy);
+
+      this.targetOffset.x = this.offsetStart.x + resisted.dx;
+      this.targetOffset.y = this.offsetStart.y + resisted.dy;
     }
   };
   
