@@ -15,15 +15,12 @@ export class ViewportTransform {
   public scale = 1;
   public offset = new Vector2(0, 0);
 
-  // Target values (where we want to go)
+  // Target values (where we want to go, for panning interpolation)
   private targetScale = 1;
   private targetOffset = new Vector2(0, 0);
 
-  // Zoom focus point (screen coordinates) - used to maintain zoom-to-point during interpolation
-  private zoomFocus: Vector2 | null = null;
-  private zoomFocusWorld: Vector2 | null = null; // The world position that should stay under zoomFocus
-
   // Interpolation speed (0-1, higher = faster, e.g., 0.15 means 15% per frame)
+  // Note: Only used for panning, zoom is instant
   public speedFactor = 0.15;
 
   // Scale limits
@@ -118,30 +115,12 @@ export class ViewportTransform {
   /**
    * Smooth interpolation update - call this every frame!
    * Formula: curr += (target - curr) * speedFactor
+   * Note: Zoom is instant, only panning is interpolated
    */
   update(): void {
-    // Interpolate scale
-    this.scale += (this.targetScale - this.scale) * this.speedFactor;
-
-    // If we have a zoom focus point, recalculate offset to keep world point under cursor
-    if (this.zoomFocus && this.zoomFocusWorld) {
-      // Calculate offset to keep zoomFocusWorld under zoomFocus at current scale
-      this.offset.x = this.zoomFocus.x - this.zoomFocusWorld.x * this.scale;
-      this.offset.y = this.zoomFocus.y - this.zoomFocusWorld.y * this.scale;
-
-      // Clear zoom focus when we're close to target scale (within 1%)
-      if (Math.abs(this.scale - this.targetScale) < 0.01) {
-        this.zoomFocus = null;
-        this.zoomFocusWorld = null;
-        // Sync target offset to current offset
-        this.targetOffset.x = this.offset.x;
-        this.targetOffset.y = this.offset.y;
-      }
-    } else {
-      // Normal offset interpolation
-      this.offset.x += (this.targetOffset.x - this.offset.x) * this.speedFactor;
-      this.offset.y += (this.targetOffset.y - this.offset.y) * this.speedFactor;
-    }
+    // Smooth offset interpolation (for panning only, zoom is instant)
+    this.offset.x += (this.targetOffset.x - this.offset.x) * this.speedFactor;
+    this.offset.y += (this.targetOffset.y - this.offset.y) * this.speedFactor;
   }
 
   getTargetScale(): number {
@@ -185,25 +164,28 @@ export class ViewportTransform {
   private handleWheel = (e: WheelEvent) => {
     e.preventDefault();
 
-    // Increased zoom speed for better control (0.002 instead of 0.001)
+    // Zoom speed for better control
     const delta = -e.deltaY * 0.002;
-    const newScale = Math.max(this.minScale, Math.min(this.maxScale, this.targetScale * (1 + delta)));
+    const newScale = Math.max(this.minScale, Math.min(this.maxScale, this.scale * (1 + delta)));
 
-    // Zoom towards mouse position - store focus point for smooth interpolation
+    // Zoom towards mouse position - INSTANT, no interpolation
     const rect = this.canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    // Calculate world position under mouse (using CURRENT scale and offset, not target)
+    // Calculate world position under mouse (using CURRENT scale and offset)
     const worldX = (mouseX - this.offset.x) / this.scale;
     const worldY = (mouseY - this.offset.y) / this.scale;
 
-    // Store zoom focus (screen point) and corresponding world point
-    this.zoomFocus = new Vector2(mouseX, mouseY);
-    this.zoomFocusWorld = new Vector2(worldX, worldY);
-
-    // Set target scale (offset will be calculated in update())
+    // INSTANT zoom: set scale and offset immediately
+    this.scale = newScale;
     this.targetScale = newScale;
+
+    // Calculate new offset to keep world point under mouse
+    this.offset.x = mouseX - worldX * newScale;
+    this.offset.y = mouseY - worldY * newScale;
+    this.targetOffset.x = this.offset.x;
+    this.targetOffset.y = this.offset.y;
   };
   
   private handleMouseDown = (e: MouseEvent) => {
@@ -284,11 +266,15 @@ export class ViewportTransform {
       const worldX = (this.touchStartCenter.x - this.offset.x) / this.scale;
       const worldY = (this.touchStartCenter.y - this.offset.y) / this.scale;
 
-      // Store zoom focus for smooth interpolation
-      this.zoomFocus = new Vector2(this.touchStartCenter.x, this.touchStartCenter.y);
-      this.zoomFocusWorld = new Vector2(worldX, worldY);
-
+      // INSTANT zoom: set scale and offset immediately
+      this.scale = newScale;
       this.targetScale = newScale;
+
+      // Calculate new offset to keep world point under pinch center
+      this.offset.x = this.touchStartCenter.x - worldX * newScale;
+      this.offset.y = this.touchStartCenter.y - worldY * newScale;
+      this.targetOffset.x = this.offset.x;
+      this.targetOffset.y = this.offset.y;
     } else if (e.touches.length === 1 && this.isDragging) {
       e.preventDefault();
       const touch = e.touches[0];
