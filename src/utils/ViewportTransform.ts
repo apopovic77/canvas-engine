@@ -74,6 +74,13 @@ export class ViewportTransform {
   }
 
   /**
+   * Enable or disable rubber banding (iOS-style spring-back at boundaries)
+   */
+  setEnableRubberBanding(enable: boolean): void {
+    this.enableRubberBanding = enable;
+  }
+
+  /**
    * Calculate the scale needed to fit all content in viewport
    * Also sets maxScale so a product can be at most 2× screen height
    */
