@@ -23,6 +23,9 @@ export class ViewportTransform {
   // Note: Only used for panning, zoom is instant
   public speedFactor = 0.15;
 
+  // Flag to skip interpolation for instant changes (zoom)
+  private skipInterpolation = false;
+
   // Scale limits
   private fitToContentScale = 1; // Calculated from content bounds
   public maxScale = 2; // Dynamically calculated: fitToContentScale × 2
@@ -118,6 +121,12 @@ export class ViewportTransform {
    * Note: Zoom is instant, only panning is interpolated
    */
   update(): void {
+    // Skip interpolation if we just did an instant zoom
+    if (this.skipInterpolation) {
+      this.skipInterpolation = false;
+      return;
+    }
+
     // Smooth offset interpolation (for panning only, zoom is instant)
     this.offset.x += (this.targetOffset.x - this.offset.x) * this.speedFactor;
     this.offset.y += (this.targetOffset.y - this.offset.y) * this.speedFactor;
@@ -186,6 +195,9 @@ export class ViewportTransform {
     this.offset.y = mouseY - worldY * newScale;
     this.targetOffset.x = this.offset.x;
     this.targetOffset.y = this.offset.y;
+
+    // Skip next interpolation frame to prevent rubber band effect
+    this.skipInterpolation = true;
   };
   
   private handleMouseDown = (e: MouseEvent) => {
@@ -275,6 +287,9 @@ export class ViewportTransform {
       this.offset.y = this.touchStartCenter.y - worldY * newScale;
       this.targetOffset.x = this.offset.x;
       this.targetOffset.y = this.offset.y;
+
+      // Skip next interpolation frame to prevent rubber band effect
+      this.skipInterpolation = true;
     } else if (e.touches.length === 1 && this.isDragging) {
       e.preventDefault();
       const touch = e.touches[0];
