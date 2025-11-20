@@ -97,9 +97,9 @@ export class ViewportTransform {
     // Use the smaller scale to ensure everything fits
     this.fitToContentScale = Math.min(scaleX, scaleY); // No padding, exact fit
 
-    // Max zoom: Allow zooming to 2× the fit-to-content scale
-    // This allows viewing a single product 2× larger than in overview
-    this.maxScale = this.fitToContentScale * 2;
+    // Max zoom: Allow zooming to 6× the fit-to-content scale
+    // This allows viewing a single product 6× larger than in overview
+    this.maxScale = this.fitToContentScale * 6;
   }
 
   /**
