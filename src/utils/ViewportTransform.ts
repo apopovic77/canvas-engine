@@ -97,14 +97,14 @@ export class ViewportTransform {
     // Use the smaller scale to ensure everything fits
     this.fitToContentScale = Math.min(scaleX, scaleY); // No padding, exact fit
 
-    // Max zoom: largest product can be at most 2× the screen height
-    // Formula: maxProductHeight * maxScale = screenHeight * 2
-    // So: maxScale = (screenHeight * 2) / maxProductHeight
+    // Max zoom: largest product can be at most 5× the screen height
+    // Formula: maxProductHeight * maxScale = screenHeight * 5
+    // So: maxScale = (screenHeight * 5) / maxProductHeight
     if (this.contentBounds.maxItemHeight && this.contentBounds.maxItemHeight > 0) {
-      this.maxScale = (this.viewportHeight * 2) / this.contentBounds.maxItemHeight;
+      this.maxScale = (this.viewportHeight * 5) / this.contentBounds.maxItemHeight;
     } else {
       // Fallback if no maxItemHeight provided
-      this.maxScale = this.fitToContentScale * 4;
+      this.maxScale = this.fitToContentScale * 8;
     }
   }
 
