@@ -24,10 +24,12 @@ export class ViewportTransform {
 
   // Scale limits
   private fitToContentScale = 1; // Calculated from content bounds
-  public maxScale = 2; // Dynamically calculated: fitToContentScale × 2
+  public maxScale = 2; // Dynamically calculated: fitToContentScale × 10
 
   // Rubber banding config (iOS-style)
-  private enableRubberBanding = true;
+  // Separate flags for translation (panning) and scale (zooming) bounds
+  private enableRubberBandingTranslation = true; // Controls panning bounds (Rect Bounds mode)
+  private enableRubberBandingScale = true; // Controls zoom bounds (all modes)
   private rubberBandResistance = 0.5; // 0-1, how much resistance (higher = more resistance)
   private rubberBandSpringBack = 0.08; // Speed of spring back (higher = faster)
   private lockVerticalPan = false; // If true, disable vertical panning and rubber banding
@@ -74,20 +76,31 @@ export class ViewportTransform {
   }
 
   /**
-   * Enable or disable rubber banding (iOS-style spring-back at boundaries)
+   * Enable or disable rubber banding for translation (panning bounds)
+   * When enabled: panning is restricted to content bounds with spring-back (Rect Bounds mode)
+   * When disabled: free panning without bounds (OFF mode or Snap-to-Content mode)
    */
-  setEnableRubberBanding(enable: boolean): void {
-    this.enableRubberBanding = enable;
+  setEnableRubberBandingTranslation(enable: boolean): void {
+    this.enableRubberBandingTranslation = enable;
+  }
+
+  /**
+   * Enable or disable rubber banding for scale (zoom bounds)
+   * When enabled: zoom is restricted between minScale and maxScale
+   * When disabled: free zooming without limits (OFF mode only)
+   */
+  setEnableRubberBandingScale(enable: boolean): void {
+    this.enableRubberBandingScale = enable;
   }
 
   /**
    * Calculate the scale needed to fit all content in viewport
-   * Also sets maxScale so a product can be at most 2× screen height
+   * Also sets maxScale so a product can be zoomed in significantly
    */
   private calculateFitToContentScale(): void {
     if (!this.contentBounds || this.viewportWidth === 0 || this.viewportHeight === 0) {
       this.fitToContentScale = 1;
-      this.maxScale = 2; // Fallback
+      this.maxScale = 10; // Fallback
       return;
     }
 
@@ -97,9 +110,9 @@ export class ViewportTransform {
     // Use the smaller scale to ensure everything fits
     this.fitToContentScale = Math.min(scaleX, scaleY); // No padding, exact fit
 
-    // Max zoom: Allow zooming to 6× the fit-to-content scale
-    // This allows viewing a single product 6× larger than in overview
-    this.maxScale = this.fitToContentScale * 6;
+    // Max zoom: Allow zooming to 10× the fit-to-content scale
+    // This allows viewing a single item 10× larger than in overview
+    this.maxScale = this.fitToContentScale * 10;
   }
 
   /**
@@ -123,7 +136,8 @@ export class ViewportTransform {
    */
   update(): void {
     // Apply rubber banding / spring back if not dragging
-    if (!this.isDragging && this.enableRubberBanding) {
+    // Only apply if translation rubber banding is enabled (Rect Bounds mode)
+    if (!this.isDragging && this.enableRubberBandingTranslation) {
       this.applyRubberBanding();
     }
 
@@ -191,10 +205,18 @@ export class ViewportTransform {
 
   /**
    * Apply iOS-style rubber banding: spring back to bounds when not dragging
+   * Respects enableRubberBandingScale and enableRubberBandingTranslation flags
    */
   private applyRubberBanding(): void {
-    // Clamp scale first (no rubber banding for scale, just hard limits)
-    this.targetScale = Math.max(this.minScale, Math.min(this.maxScale, this.targetScale));
+    // Clamp scale if scale rubber banding is enabled
+    if (this.enableRubberBandingScale) {
+      this.targetScale = Math.max(this.minScale, Math.min(this.maxScale, this.targetScale));
+    }
+
+    // Skip translation bounds if translation rubber banding is disabled
+    if (!this.enableRubberBandingTranslation) {
+      return;
+    }
 
     const bounds = this.calculateBounds();
     if (!bounds) return;
@@ -234,9 +256,10 @@ export class ViewportTransform {
 
   /**
    * Apply resistance when dragging outside bounds (iOS-style rubber band feel)
+   * Only applies if translation rubber banding is enabled
    */
   private applyDragResistance(dx: number, dy: number): { dx: number; dy: number } {
-    if (!this.enableRubberBanding) return { dx, dy };
+    if (!this.enableRubberBandingTranslation) return { dx, dy };
 
     const bounds = this.calculateBounds();
     if (!bounds) return { dx, dy };
@@ -310,7 +333,12 @@ export class ViewportTransform {
 
     // Increased zoom speed for better control (0.002 instead of 0.001)
     const delta = -e.deltaY * 0.002;
-    const newScale = Math.max(this.minScale, Math.min(this.maxScale, this.targetScale * (1 + delta)));
+    let newScale = this.targetScale * (1 + delta);
+
+    // Apply scale bounds if scale rubber banding is enabled
+    if (this.enableRubberBandingScale) {
+      newScale = Math.max(this.minScale, Math.min(this.maxScale, newScale));
+    }
 
     // Zoom towards mouse position
     const rect = this.canvas.getBoundingClientRect();
@@ -400,7 +428,12 @@ export class ViewportTransform {
         touch2.clientY - touch1.clientY
       );
       const scaleFactor = distance / this.touchStartDistance;
-      const newScale = Math.max(this.minScale, Math.min(this.maxScale, this.touchStartScale * scaleFactor));
+      let newScale = this.touchStartScale * scaleFactor;
+
+      // Apply scale bounds if scale rubber banding is enabled
+      if (this.enableRubberBandingScale) {
+        newScale = Math.max(this.minScale, Math.min(this.maxScale, newScale));
+      }
 
       // Zoom towards the midpoint between fingers (iOS-style pinch-to-zoom)
       const scaleRatio = newScale / this.targetScale;
