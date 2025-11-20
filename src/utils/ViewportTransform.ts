@@ -24,7 +24,7 @@ export class ViewportTransform {
 
   // Scale limits
   private fitToContentScale = 1; // Calculated from content bounds
-  public maxScale = 2; // Dynamically calculated: fitToContentScale × 10
+  public maxScale = 2; // Dynamically calculated: fitToContentScale × 50
 
   // Rubber banding config (iOS-style)
   // Separate flags for translation (panning) and scale (zooming) bounds
@@ -110,9 +110,9 @@ export class ViewportTransform {
     // Use the smaller scale to ensure everything fits
     this.fitToContentScale = Math.min(scaleX, scaleY); // No padding, exact fit
 
-    // Max zoom: Allow zooming to 10× the fit-to-content scale
-    // This allows viewing a single item 10× larger than in overview
-    this.maxScale = this.fitToContentScale * 10;
+    // Max zoom: Allow zooming to 50× the fit-to-content scale
+    // This allows viewing a single item 50× larger than in overview
+    this.maxScale = this.fitToContentScale * 50;
   }
 
   /**
