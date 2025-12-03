@@ -131,7 +131,6 @@ export function useImageCache(): UseImageCacheReturn {
       }
       const highResUrl = urlObj.toString();
 
-      console.log(`[ImageCache] Loading high-res image: ${highResUrl}`);
       const response = await fetch(highResUrl);
 
       if (!response.ok) {
@@ -146,7 +145,6 @@ export function useImageCache(): UseImageCacheReturn {
         img.crossOrigin = 'anonymous';
         img.onload = () => {
           highResCache.current.set(imageUrl, img);
-          console.log(`[ImageCache] High-res image cached: ${imageUrl}`);
           resolve(img);
         };
         img.onerror = () => {
