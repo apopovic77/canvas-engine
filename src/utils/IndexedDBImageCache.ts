@@ -41,7 +41,6 @@ class IndexedDBImageCache {
 
       request.onsuccess = () => {
         this.db = request.result;
-        console.log('[IndexedDBImageCache] Database opened successfully');
         resolve();
       };
 
@@ -52,7 +51,6 @@ class IndexedDBImageCache {
         if (!db.objectStoreNames.contains(STORE_NAME)) {
           const objectStore = db.createObjectStore(STORE_NAME, { keyPath: 'url' });
           objectStore.createIndex('timestamp', 'timestamp', { unique: false });
-          console.log('[IndexedDBImageCache] Object store created');
         }
       };
     });
@@ -83,14 +81,12 @@ class IndexedDBImageCache {
         // Check if cache is expired
         const age = Date.now() - cached.timestamp;
         if (age > CACHE_DURATION_MS) {
-          console.log('[IndexedDBImageCache] Cache expired for:', url);
           // Delete expired entry
           this.delete(url);
           resolve(null);
           return;
         }
 
-        console.log('[IndexedDBImageCache] Cache HIT for:', url);
         resolve(cached.blob);
       };
 
@@ -122,7 +118,6 @@ class IndexedDBImageCache {
       const request = store.put(cached);
 
       request.onsuccess = () => {
-        console.log('[IndexedDBImageCache] Cached:', url);
         resolve();
       };
 
@@ -146,7 +141,6 @@ class IndexedDBImageCache {
       const request = store.delete(url);
 
       request.onsuccess = () => {
-        console.log('[IndexedDBImageCache] Deleted:', url);
         resolve();
       };
 
@@ -170,7 +164,6 @@ class IndexedDBImageCache {
       const request = store.clear();
 
       request.onsuccess = () => {
-        console.log('[IndexedDBImageCache] Cache cleared');
         resolve();
       };
 
@@ -211,7 +204,6 @@ class IndexedDBImageCache {
 
           cursor.continue();
         } else {
-          console.log(`[IndexedDBImageCache] Cleanup: Deleted ${deletedCount} old images`);
           resolve(deletedCount);
         }
       };
