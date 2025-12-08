@@ -95,6 +95,7 @@ export type {
   MarkerOptions,
   PathOptions,
   LayerOptions,
+  IMapLayer,
 } from './map';
 
 // ============================================================

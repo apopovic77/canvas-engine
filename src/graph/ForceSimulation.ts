@@ -207,8 +207,8 @@ export class ForceSimulation<T = any> {
     minDistance: number,
     maxForce: number
   ): Vector2 {
-    const delta = posA.subtract(posB);
-    let distance = delta.magnitude();
+    const delta = Vec.subtract(posA, posB);
+    let distance = Vec.magnitude(delta);
 
     // Prevent division by zero
     if (distance < minDistance) {
@@ -223,9 +223,9 @@ export class ForceSimulation<T = any> {
     const clampedForce = Math.min(forceMagnitude, maxForce);
 
     // Direction: push A away from B
-    const direction = distance > 0.001 ? delta.scale(1 / distance) : new Vector2(1, 0);
+    const direction = distance > 0.001 ? Vec.scale(delta, 1 / distance) : new Vector2(1, 0);
 
-    return direction.scale(clampedForce);
+    return Vec.scale(direction, clampedForce);
   }
 
   /**
@@ -235,7 +235,7 @@ export class ForceSimulation<T = any> {
     let energy = 0;
     for (const node of this.nodes) {
       if (!node.isFixed) {
-        const speed = node.velocity.magnitude();
+        const speed = Vec.magnitude(node.velocity);
         energy += 0.5 * node.mass * speed * speed;
       }
     }

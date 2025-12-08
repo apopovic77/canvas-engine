@@ -16,11 +16,13 @@ import {
   Rect,
   TileEvent,
   TileEventCallback,
-  TileLoadProgress
+  TileLoadProgress,
+  ZoomLevel
 } from './TileTypes';
 import { TileManager } from './TileManager';
 import { GeoTransform } from '../geo/GeoTransform';
 import { GeoTransformConfig, LatLng } from '../geo/GeoTypes';
+import { IMapLayer } from '../map/MapTypes';
 
 /**
  * Map event types
@@ -98,6 +100,13 @@ export class TileMapRenderer {
   private lastOffsetX: number = 0;
   private lastOffsetY: number = 0;
 
+  // Debug: mouse position tracking
+  private mouseScreenX: number = 0;
+  private mouseScreenY: number = 0;
+
+  // Map layers for markers, paths, and custom layers (e.g., POI labels)
+  private readonly layers: Map<string, IMapLayer> = new Map();
+
   /**
    * Create a new TileMapRenderer
    */
@@ -148,6 +157,18 @@ export class TileMapRenderer {
 
     // Setup click handler
     this.canvas.addEventListener('click', this.handleClick.bind(this));
+
+    // Setup mousemove for debug info
+    this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
+  }
+
+  /**
+   * Handle mouse move for debug overlay
+   */
+  private handleMouseMove(event: MouseEvent): void {
+    const rect = this.canvas.getBoundingClientRect();
+    this.mouseScreenX = event.clientX - rect.left;
+    this.mouseScreenY = event.clientY - rect.top;
   }
 
   /**
@@ -211,6 +232,9 @@ export class TileMapRenderer {
 
     // Update tile opacities
     this.updateTileOpacities(deltaTime);
+
+    // Update layers (for animations/physics)
+    this.updateLayers(deltaTime);
 
     // Render
     this.render();
@@ -332,6 +356,9 @@ export class TileMapRenderer {
     // Render tiles
     this.renderTiles();
 
+    // Render layers (markers, paths, custom layers like POI labels)
+    this.renderLayers();
+
     // Debug overlay
     if (this.debug) {
       this.renderDebug();
@@ -345,6 +372,7 @@ export class TileMapRenderer {
     const viewportBounds = this.getViewportWorldBounds();
     const zoom = this.tileManager.getOptimalZoom(this.viewport.scale);
     const tiles = this.tileManager.getTilesToRender(viewportBounds, zoom);
+    const tileSize = this.tileManager.getTileSize();
 
     // Sort tiles by zoom (lower zoom first for proper layering)
     tiles.sort((a, b) => a.zoom - b.zoom);
@@ -354,6 +382,15 @@ export class TileMapRenderer {
 
       const opacity = this.getTileOpacity(tile);
       if (opacity <= 0) continue;
+
+      // Get zoom level to calculate actual source dimensions
+      const zoomLevel = this.tileManager.getZoomLevel(tile.zoom);
+      if (!zoomLevel) continue;
+
+      // Calculate source rectangle (actual content, not padding)
+      // Edge tiles have content smaller than tileSize
+      const srcWidth = Math.min(tileSize, Math.round(tile.bounds.width * zoomLevel.scale));
+      const srcHeight = Math.min(tileSize, Math.round(tile.bounds.height * zoomLevel.scale));
 
       // Convert tile bounds to screen coordinates
       const screenTopLeft = this.viewport.worldToScreen(
@@ -372,13 +409,11 @@ export class TileMapRenderer {
       // Apply opacity
       this.ctx.globalAlpha = opacity;
 
-      // Draw tile
+      // Draw tile with source clipping to avoid stretching padded areas
       this.ctx.drawImage(
         tile.image,
-        screenTopLeft.x,
-        screenTopLeft.y,
-        screenWidth,
-        screenHeight
+        0, 0, srcWidth, srcHeight,  // Source rectangle (only valid content)
+        screenTopLeft.x, screenTopLeft.y, screenWidth, screenHeight  // Destination
       );
     }
 
@@ -393,21 +428,97 @@ export class TileMapRenderer {
     const { ctx } = this;
     const progress = this.tileManager.getProgress();
     const zoom = this.tileManager.getOptimalZoom(this.viewport.scale);
-    const center = this.getViewportWorldCenter();
+    const zoomLevel = this.tileManager.getZoomLevel(zoom);
+    const tileSize = this.tileManager.getTileSize();
+    const { originalSize } = this.config.manifest;
 
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-    ctx.fillRect(10, 10, 200, 100);
+    // Get mouse world position
+    const mouseWorld = this.viewport.screenToWorld(
+      new Vector2(this.mouseScreenX, this.mouseScreenY)
+    );
+
+    // Calculate tile at mouse position
+    let tileCol = -1;
+    let tileRow = -1;
+    let tileWorldSize = tileSize;
+    if (zoomLevel) {
+      const scaleFactor = 1 / zoomLevel.scale;
+      tileWorldSize = tileSize * scaleFactor;
+      tileCol = Math.floor(mouseWorld.x / tileWorldSize);
+      tileRow = Math.floor(mouseWorld.y / tileWorldSize);
+    }
+
+    // Draw debug panel
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+    ctx.fillRect(10, 10, 320, 180);
 
     ctx.fillStyle = '#fff';
     ctx.font = '12px monospace';
-    ctx.fillText(`Zoom: ${zoom} / ${this.tileManager.getMaxZoom()}`, 20, 30);
-    ctx.fillText(`Scale: ${this.viewport.scale.toFixed(3)}`, 20, 45);
-    ctx.fillText(`Tiles: ${progress.loaded}/${progress.total} (${progress.loading} loading)`, 20, 60);
-    ctx.fillText(`Center: ${center.x.toFixed(0)}, ${center.y.toFixed(0)}`, 20, 75);
+    let y = 28;
+    const lineHeight = 16;
 
-    if (this.geoTransform) {
-      const latLng = this.geoTransform.pixelToLatLng(center);
-      ctx.fillText(`GPS: ${latLng.lat.toFixed(5)}, ${latLng.lng.toFixed(5)}`, 20, 90);
+    ctx.fillText(`Zoom Level: ${zoom} / ${this.tileManager.getMaxZoom()}`, 20, y); y += lineHeight;
+    ctx.fillText(`Viewport Scale: ${this.viewport.scale.toFixed(4)}`, 20, y); y += lineHeight;
+    if (zoomLevel) {
+      ctx.fillText(`Zoom Scale: ${zoomLevel.scale.toFixed(4)} (${zoomLevel.cols}x${zoomLevel.rows} tiles)`, 20, y); y += lineHeight;
+    }
+    ctx.fillText(`Tile Size: ${tileSize}px (world: ${tileWorldSize.toFixed(0)}px)`, 20, y); y += lineHeight;
+    ctx.fillText(`Original: ${originalSize.width}x${originalSize.height}`, 20, y); y += lineHeight;
+    ctx.fillText(`Tiles: ${progress.loaded}/${progress.total} (${progress.loading} loading)`, 20, y); y += lineHeight;
+
+    y += 8;
+    ctx.fillStyle = '#0f0';
+    ctx.fillText(`Mouse World: ${mouseWorld.x.toFixed(0)}, ${mouseWorld.y.toFixed(0)}`, 20, y); y += lineHeight;
+    const tileStatus = this.tileManager.getTileStatus(zoom, tileCol, tileRow);
+    ctx.fillText(`Expected Tile: tile_${tileCol}_${tileRow}.jpg (zoom_${zoom}) [${tileStatus}]`, 20, y); y += lineHeight;
+
+    // Draw crosshair at mouse position
+    ctx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(this.mouseScreenX, 0);
+    ctx.lineTo(this.mouseScreenX, this.canvas.height);
+    ctx.moveTo(0, this.mouseScreenY);
+    ctx.lineTo(this.canvas.width, this.mouseScreenY);
+    ctx.stroke();
+
+    // Draw tile grid overlay (for current zoom level)
+    if (zoomLevel && this.viewport.scale > 0.01) {
+      this.renderTileGrid(zoomLevel, tileWorldSize);
+    }
+  }
+
+  /**
+   * Render tile grid overlay for debugging
+   */
+  private renderTileGrid(zoomLevel: ZoomLevel, tileWorldSize: number): void {
+    const { ctx } = this;
+    ctx.strokeStyle = 'rgba(255, 0, 0, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.font = '10px monospace';
+    ctx.fillStyle = 'rgba(255, 0, 0, 0.7)';
+
+    for (let col = 0; col < zoomLevel.cols; col++) {
+      for (let row = 0; row < zoomLevel.rows; row++) {
+        const worldX = col * tileWorldSize;
+        const worldY = row * tileWorldSize;
+        const screenPos = this.viewport.worldToScreen(new Vector2(worldX, worldY));
+        const screenSize = tileWorldSize * this.viewport.scale;
+
+        // Only draw if tile is visible
+        if (screenPos.x + screenSize < 0 || screenPos.x > this.canvas.width ||
+            screenPos.y + screenSize < 0 || screenPos.y > this.canvas.height) {
+          continue;
+        }
+
+        // Draw tile border
+        ctx.strokeRect(screenPos.x, screenPos.y, screenSize, screenSize);
+
+        // Draw tile label (only if tile is large enough)
+        if (screenSize > 50) {
+          ctx.fillText(`${col},${row}`, screenPos.x + 4, screenPos.y + 14);
+        }
+      }
     }
   }
 
@@ -609,6 +720,61 @@ export class TileMapRenderer {
     this.viewport.viewportHeight = height;
   }
 
+  // === Layer Management ===
+
+  /**
+   * Add a layer to the renderer
+   */
+  addLayer(layer: IMapLayer): void {
+    this.layers.set(layer.id, layer);
+  }
+
+  /**
+   * Remove a layer by ID
+   */
+  removeLayer(layerId: string): boolean {
+    return this.layers.delete(layerId);
+  }
+
+  /**
+   * Get a layer by ID
+   */
+  getLayer(layerId: string): IMapLayer | undefined {
+    return this.layers.get(layerId);
+  }
+
+  /**
+   * Get all layers sorted by z-index
+   */
+  getLayers(): IMapLayer[] {
+    return Array.from(this.layers.values()).sort((a, b) => a.zIndex - b.zIndex);
+  }
+
+  /**
+   * Update all layers (for animations/physics)
+   */
+  private updateLayers(deltaTime: number): void {
+    for (const layer of this.layers.values()) {
+      if (layer.visible) {
+        layer.update(deltaTime);
+      }
+    }
+  }
+
+  /**
+   * Render all layers
+   */
+  private renderLayers(): void {
+    if (!this.geoTransform) return;
+
+    const sortedLayers = this.getLayers();
+    for (const layer of sortedLayers) {
+      if (layer.visible && layer.opacity > 0) {
+        layer.render(this.ctx, this.geoTransform, this.viewport);
+      }
+    }
+  }
+
   /**
    * Destroy renderer and clean up
    */
@@ -617,5 +783,6 @@ export class TileMapRenderer {
     this.tileManager.cancelAll();
     this.eventListeners.clear();
     this.tileOpacities.clear();
+    this.layers.clear();
   }
 }

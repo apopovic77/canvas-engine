@@ -33,6 +33,7 @@ export class ViewportTransform {
   private rubberBandResistance = 0.5; // 0-1, how much resistance (higher = more resistance)
   private rubberBandSpringBack = 0.08; // Speed of spring back (higher = faster)
   private lockVerticalPan = false; // If true, disable vertical panning and rubber banding
+  private enableLeftClickPan = false; // If true, left-click drag pans (for map viewers)
 
   // Content bounds for bounds checking
   private contentBounds: ContentBounds | null = null;
@@ -91,6 +92,15 @@ export class ViewportTransform {
    */
   setEnableRubberBandingScale(enable: boolean): void {
     this.enableRubberBandingScale = enable;
+  }
+
+  /**
+   * Enable left-click panning (for map viewers)
+   * When enabled: left-click drag pans the view
+   * When disabled: only middle/right click or Ctrl+drag pans (default for product galleries)
+   */
+  setEnableLeftClickPan(enable: boolean): void {
+    this.enableLeftClickPan = enable;
   }
 
   /**
@@ -354,8 +364,12 @@ export class ViewportTransform {
   };
   
   private handleMouseDown = (e: MouseEvent) => {
-    // Only pan with middle or right button, or with Ctrl/Cmd key
-    if (e.button === 1 || e.button === 2 || e.ctrlKey || e.metaKey) {
+    // Pan with middle or right button, or with Ctrl/Cmd key
+    // Also left-click if enableLeftClickPan is true (for map viewers)
+    const shouldPan = e.button === 1 || e.button === 2 || e.ctrlKey || e.metaKey ||
+      (e.button === 0 && this.enableLeftClickPan);
+
+    if (shouldPan) {
       e.preventDefault();
       this.isDragging = true;
       this.dragStart.x = e.clientX;

@@ -52,6 +52,8 @@ export interface MarkerOptions {
   zIndex?: number;
   /** Custom metadata */
   metadata?: Record<string, unknown>;
+  /** Minimum viewport scale to show label (0 = always show) */
+  labelMinScale?: number;
 }
 
 /**
@@ -123,3 +125,28 @@ export const DEFAULT_PATH_STYLE = {
   fillOpacity: 0.3,
   hoverWidth: 5,
 } as const;
+
+/**
+ * Interface for renderable map layers
+ * Both MapLayer and custom layers (like POILabelManager) can implement this
+ */
+export interface IMapLayer {
+  /** Unique layer ID */
+  readonly id: string;
+  /** Display name */
+  name: string;
+  /** Visibility state */
+  visible: boolean;
+  /** Layer opacity (0-1) */
+  opacity: number;
+  /** Z-index for layer ordering */
+  zIndex: number;
+  /** Render the layer */
+  render(
+    ctx: CanvasRenderingContext2D,
+    geoTransform: unknown,
+    viewport: unknown
+  ): void;
+  /** Update the layer (for animations/physics) */
+  update(deltaTime: number): void;
+}

@@ -65,8 +65,10 @@ export class TileManager {
 
     for (const level of zoomLevels) {
       // Create quadtree for this zoom level
+      // IMPORTANT: Use original image dimensions, NOT level dimensions!
+      // Tile bounds are calculated in world (original) coordinates
       const tree = new QuadTree<Tile>(
-        { x: 0, y: 0, width: level.width, height: level.height },
+        { x: 0, y: 0, width: this.manifest.originalSize.width, height: this.manifest.originalSize.height },
         8,  // maxDepth
         4   // maxItems
       );
@@ -293,10 +295,12 @@ export class TileManager {
    * Get tiles to render (loaded tiles at optimal zoom, with fallback)
    *
    * For tiles not yet loaded, returns lower-resolution tiles as fallback.
+   * IMPORTANT: Always includes fallback tiles to prevent flicker during fade-in.
+   * The renderer decides which fallbacks to show based on actual opacity.
    */
   getTilesToRender(viewportBounds: Rect, zoom: number): Tile[] {
     const result: Tile[] = [];
-    const coveredAreas = new Set<string>();
+    const addedIds = new Set<string>();
 
     // Get tiles at requested zoom
     const requestedTiles = this.getVisibleTiles(viewportBounds, zoom);
@@ -304,28 +308,19 @@ export class TileManager {
     for (const tile of requestedTiles) {
       if (tile.state === 'loaded' && tile.image) {
         result.push(tile);
-        coveredAreas.add(tile.id);
+        addedIds.add(tile.id);
       }
     }
 
-    // For uncovered areas, try lower zoom levels as fallback
-    const uncoveredTiles = requestedTiles.filter(t => !coveredAreas.has(t.id));
+    // ALWAYS add fallback tiles for smooth transitions
+    // The renderer will use them until target tiles are fully faded in
+    for (let fallbackZoom = zoom - 1; fallbackZoom >= 0; fallbackZoom--) {
+      const fallbackTiles = this.getVisibleTiles(viewportBounds, fallbackZoom);
 
-    if (uncoveredTiles.length > 0) {
-      for (let fallbackZoom = zoom - 1; fallbackZoom >= 0; fallbackZoom--) {
-        const fallbackTiles = this.getVisibleTiles(viewportBounds, fallbackZoom);
-
-        for (const tile of fallbackTiles) {
-          if (tile.state === 'loaded' && tile.image) {
-            // Check if this fallback tile covers any uncovered area
-            const coversUncovered = uncoveredTiles.some(
-              ut => QuadTree.rectsIntersect(tile.bounds, ut.bounds)
-            );
-
-            if (coversUncovered) {
-              result.push(tile);
-            }
-          }
+      for (const tile of fallbackTiles) {
+        if (tile.state === 'loaded' && tile.image && !addedIds.has(tile.id)) {
+          result.push(tile);
+          addedIds.add(tile.id);
         }
       }
     }
@@ -384,6 +379,22 @@ export class TileManager {
    */
   getMinZoom(): number {
     return 0;
+  }
+
+  /**
+   * Get status of a specific tile
+   */
+  getTileStatus(zoom: number, col: number, row: number): string {
+    const tree = this.quadTrees.get(zoom);
+    if (!tree) return 'no-tree';
+
+    const tiles = tree.all();
+    for (const tile of tiles) {
+      if (tile.x === col && tile.y === row) {
+        return tile.state;
+      }
+    }
+    return 'not-found';
   }
 
   /**

@@ -74,8 +74,10 @@ export class DefaultNodeView<T = any> implements INodeView<T> {
 
     const { ctx } = context;
     const pos = node.visualPosition.value;
-    const radius = node.visualRadius.value;
-    const opacity = node.visualOpacity.value;
+    const radius = node.visualRadius.value ?? node.radius;
+    const opacity = node.visualOpacity.value ?? 1;
+
+    if (!pos) return;
 
     ctx.save();
     ctx.globalAlpha = opacity;
@@ -131,6 +133,8 @@ export class DefaultEdgeView<T = any> implements IEdgeView<T> {
     const { ctx } = context;
     const pinPos = edge.pin.position;
     const nodePos = edge.node.visualPosition.value;
+
+    if (!nodePos) return;
 
     ctx.save();
 

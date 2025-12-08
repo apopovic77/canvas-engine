@@ -16,6 +16,7 @@ export type {
   MarkerOptions,
   PathOptions,
   LayerOptions,
+  IMapLayer,
 } from './MapTypes';
 
 export {
