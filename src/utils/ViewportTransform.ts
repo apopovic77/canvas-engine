@@ -543,11 +543,54 @@ export class ViewportTransform {
     ctx.scale(this.scale, this.scale);
   }
   
-  screenToWorld(screenX: number, screenY: number): Vector2 {
-    return new Vector2(
-      (screenX - this.offset.x) / this.scale,
-      (screenY - this.offset.y) / this.scale
-    );
+  screenToWorld(screenX: number, screenY: number): Vector2;
+  screenToWorld(screenPos: Vector2): Vector2;
+  screenToWorld(screenXOrPos: number | Vector2, screenY?: number): Vector2 {
+    if (typeof screenXOrPos === 'number') {
+      return new Vector2(
+        (screenXOrPos - this.offset.x) / this.scale,
+        (screenY! - this.offset.y) / this.scale
+      );
+    } else {
+      return new Vector2(
+        (screenXOrPos.x - this.offset.x) / this.scale,
+        (screenXOrPos.y - this.offset.y) / this.scale
+      );
+    }
+  }
+
+  /**
+   * Convert world coordinates to screen coordinates
+   */
+  worldToScreen(worldX: number, worldY: number): Vector2;
+  worldToScreen(worldPos: Vector2): Vector2;
+  worldToScreen(worldXOrPos: number | Vector2, worldY?: number): Vector2 {
+    if (typeof worldXOrPos === 'number') {
+      return new Vector2(
+        worldXOrPos * this.scale + this.offset.x,
+        worldY! * this.scale + this.offset.y
+      );
+    } else {
+      return new Vector2(
+        worldXOrPos.x * this.scale + this.offset.x,
+        worldXOrPos.y * this.scale + this.offset.y
+      );
+    }
+  }
+
+  /**
+   * Set target scale for smooth animation
+   */
+  setTargetScale(scale: number): void {
+    this.targetScale = scale;
+  }
+
+  /**
+   * Set target offset for smooth animation
+   */
+  setTargetOffset(x: number, y: number): void {
+    this.targetOffset.x = x;
+    this.targetOffset.y = y;
   }
 }
 

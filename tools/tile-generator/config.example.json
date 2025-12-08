@@ -1,0 +1,13 @@
+{
+  "input": "/path/to/large-image.jpg",
+  "output": "/path/to/tiles",
+  "tileSize": 1024,
+  "format": "jpg",
+  "quality": 85,
+  "zoomLevels": "auto",
+  "minZoom": 0,
+  "maxZoom": null,
+  "backgroundColor": "#000000",
+  "parallel": true,
+  "threads": 4
+}

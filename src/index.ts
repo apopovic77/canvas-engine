@@ -34,5 +34,68 @@ export { useInactivityTimer } from './hooks/useInactivityTimer';
 export { useImageCache } from './hooks/useImageCache';
 export type { HighResImageConfig } from './hooks/useImageCache';
 
+// ============================================================
+// TileMap System (NEW)
+// ============================================================
+
+// Geo Module - Geographic Coordinate Transformations
+export {
+  AffineTransform,
+  UTMConverter,
+  GeoTransform,
+} from './geo';
+
+export type {
+  LatLng,
+  UTMCoord,
+  PixelCoord,
+  CalibrationPoint,
+  GeoTransformConfig,
+  GeoBounds,
+  LatLngBounds,
+} from './geo';
+
+// TileMap Module - Tile-based Map Rendering
+export {
+  QuadTree,
+  TileLoadQueue,
+  TileManager,
+  TileMapRenderer,
+} from './tilemap';
+
+export type {
+  Rect,
+  TileState,
+  Tile,
+  ZoomLevel,
+  TileManifest,
+  TileLoadProgress,
+  TileEventType,
+  TileEvent,
+  TileEventCallback,
+  TileManagerConfig,
+  TileMapRendererConfig,
+  MapEventType,
+  MapClickEvent,
+  MapEventCallback,
+} from './tilemap';
+
+// Map Module - Map Features (Markers, Paths, Layers)
+export {
+  MapMarker,
+  MapPath,
+  MapLayer,
+  DEFAULT_MARKER_STYLE,
+  DEFAULT_PATH_STYLE,
+} from './map';
+
+export type {
+  MapFeature,
+  IconAnchor,
+  MarkerOptions,
+  PathOptions,
+  LayerOptions,
+} from './map';
+
 // Re-export Vector2 for convenience
 export { Vector2 } from 'arkturian-typescript-utils';
