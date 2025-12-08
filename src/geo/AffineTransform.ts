@@ -170,7 +170,9 @@ export class AffineTransform {
   invert(): AffineTransform {
     const det = this.a * this.d - this.b * this.c;
 
-    if (Math.abs(det) < 1e-10) {
+    // Use relative tolerance for large scale differences (e.g., pixel→GPS)
+    // Absolute tolerance of 1e-10 is too strict when coefficients are ~1e-6
+    if (Math.abs(det) < Number.EPSILON * 100) {
       throw new Error('Transform is singular - cannot invert');
     }
 
@@ -213,7 +215,7 @@ export class AffineTransform {
    * Check if transform is invertible
    */
   isInvertible(): boolean {
-    return Math.abs(this.getDeterminant()) > 1e-10;
+    return Math.abs(this.getDeterminant()) > Number.EPSILON * 100;
   }
 
   /**
