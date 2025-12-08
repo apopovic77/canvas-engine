@@ -35,7 +35,7 @@ export { useImageCache } from './hooks/useImageCache';
 export type { HighResImageConfig } from './hooks/useImageCache';
 
 // ============================================================
-// TileMap System (NEW)
+// TileMap System
 // ============================================================
 
 // Geo Module - Geographic Coordinate Transformations
@@ -96,6 +96,23 @@ export type {
   PathOptions,
   LayerOptions,
 } from './map';
+
+// ============================================================
+// Force-Based Graph System
+// ============================================================
+
+export { ForceGraphManager } from './graph/ForceGraphManager';
+export type { ForceGraphConfig } from './graph/ForceGraphManager';
+
+export { ForceGraphNode } from './graph/ForceGraphNode';
+export { PinPoint } from './graph/PinPoint';
+export { EdgeConstraint, EdgeType } from './graph/EdgeConstraint';
+export { BlockerNode } from './graph/BlockerNode';
+export { ForceSimulation } from './graph/ForceSimulation';
+export type { ForceSimulationConfig } from './graph/ForceSimulation';
+
+export type { INodeView, IPinView, IEdgeView, GraphRenderContext } from './graph/IGraphView';
+export { DefaultNodeView, DefaultPinView, DefaultEdgeView } from './graph/IGraphView';
 
 // Re-export Vector2 for convenience
 export { Vector2 } from 'arkturian-typescript-utils';
