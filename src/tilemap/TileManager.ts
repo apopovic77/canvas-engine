@@ -200,7 +200,18 @@ export class TileManager {
     const visibleTiles = this.getVisibleTiles(viewportBounds, zoom);
     const visibleIds = new Set(visibleTiles.map(t => t.id));
 
-    // Cancel non-visible tile loads
+    // Also get preload tiles (higher zoom) - include in visibleIds to prevent cancel loop
+    let preloadTiles: Tile[] = [];
+    if (zoom < this.manifest.zoomLevels.length - 1) {
+      const higherZoom = zoom + 1;
+      preloadTiles = this.getVisibleTiles(viewportBounds, higherZoom);
+      // Add preload tile IDs to visible set so they don't get canceled
+      for (const tile of preloadTiles) {
+        visibleIds.add(tile.id);
+      }
+    }
+
+    // Cancel non-visible tile loads (now excludes preload tiles)
     this.loadQueue.cancelNotVisible(visibleIds);
 
     // Enqueue visible tiles
@@ -211,17 +222,11 @@ export class TileManager {
       }
     }
 
-    // Also preload adjacent zoom levels (one higher resolution)
-    if (zoom < this.manifest.zoomLevels.length - 1) {
-      const higherZoom = zoom + 1;
-      const higherTiles = this.getVisibleTiles(viewportBounds, higherZoom);
-
-      for (const tile of higherTiles) {
-        if (tile.state === 'pending') {
-          // Lower priority for preload
-          const priority = TileLoadQueue.calculatePriority(tile, viewportCenter, higherZoom) + 500;
-          this.loadQueue.enqueue(tile, priority);
-        }
+    // Enqueue preload tiles with lower priority
+    for (const tile of preloadTiles) {
+      if (tile.state === 'pending') {
+        const priority = TileLoadQueue.calculatePriority(tile, viewportCenter, zoom + 1) + 500;
+        this.loadQueue.enqueue(tile, priority);
       }
     }
 

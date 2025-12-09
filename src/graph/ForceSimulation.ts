@@ -133,12 +133,15 @@ export class ForceSimulation<T = any> {
 
     for (let i = 0; i < this.nodes.length; i++) {
       const nodeA = this.nodes[i];
-      if (nodeA.isFixed) continue; // Fixed nodes don't move
+      // Don't skip fixed nodes - they should still repel others!
 
       for (let j = i + 1; j < this.nodes.length; j++) {
         const nodeB = this.nodes[j];
 
-        // Calculate repulsion force
+        // Skip if BOTH nodes are fixed (no point calculating)
+        if (nodeA.isFixed && nodeB.isFixed) continue;
+
+        // Calculate repulsion force (A pushes away from B)
         const force = this.calculateRepulsionForce(
           nodeA.position,
           nodeB.position,
@@ -149,8 +152,11 @@ export class ForceSimulation<T = any> {
           maxForce
         );
 
-        // Apply force to both nodes (Newton's 3rd law: equal and opposite)
-        nodeA.applyForce(force);
+        // Apply force to nodes that can move (Newton's 3rd law: equal and opposite)
+        // Fixed nodes act as "immovable" force sources - they push others but don't move themselves
+        if (!nodeA.isFixed) {
+          nodeA.applyForce(force);
+        }
         if (!nodeB.isFixed) {
           nodeB.applyForce(Vec.scale(force, -1));
         }
@@ -208,22 +214,41 @@ export class ForceSimulation<T = any> {
     maxForce: number
   ): Vector2 {
     const delta = Vec.subtract(posA, posB);
-    let distance = Vec.magnitude(delta);
+    const centerDistance = Vec.magnitude(delta);
 
     // Prevent division by zero
-    if (distance < minDistance) {
-      distance = minDistance;
+    if (centerDistance < 0.001) {
+      // Nodes are on top of each other - push in random direction
+      const randomAngle = Math.random() * Math.PI * 2;
+      return new Vector2(
+        Math.cos(randomAngle) * maxForce,
+        Math.sin(randomAngle) * maxForce
+      );
     }
 
-    // Repulsion force: F = strength / distance^2 (inverse square law)
-    // But we use 1/distance for smoother behavior
-    const forceMagnitude = strength / distance;
+    // Calculate surface-to-surface distance (negative means overlap!)
+    const combinedRadius = radiusA + radiusB;
+    const surfaceDistance = centerDistance - combinedRadius;
+
+    let forceMagnitude: number;
+
+    if (surfaceDistance < 0) {
+      // OVERLAP! Apply strong collision force
+      // Force increases linearly with overlap depth
+      const overlapDepth = Math.abs(surfaceDistance);
+      forceMagnitude = strength * (1 + overlapDepth / 10);
+    } else {
+      // No overlap - normal distance-based repulsion
+      // Use surface distance (not center distance) for more accurate behavior
+      const effectiveDistance = Math.max(surfaceDistance, minDistance);
+      forceMagnitude = strength / effectiveDistance;
+    }
 
     // Clamp force to prevent instability
     const clampedForce = Math.min(forceMagnitude, maxForce);
 
     // Direction: push A away from B
-    const direction = distance > 0.001 ? Vec.scale(delta, 1 / distance) : new Vector2(1, 0);
+    const direction = Vec.scale(delta, 1 / centerDistance);
 
     return Vec.scale(direction, clampedForce);
   }

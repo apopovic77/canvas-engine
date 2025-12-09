@@ -20,8 +20,10 @@ import {
   ZoomLevel
 } from './TileTypes';
 import { TileManager } from './TileManager';
-import { GeoTransform } from '../geo/GeoTransform';
-import { GeoTransformConfig, LatLng } from '../geo/GeoTypes';
+import { GeoTransform, GeoTransformConfigExtended } from '../geo/GeoTransform';
+import { MultiPointGeoTransform, MultiPointGeoTransformConfig } from '../geo/MultiPointGeoTransform';
+import { ThinPlateSplineTransform, TPSTransformConfig } from '../geo/ThinPlateSplineTransform';
+import type { LatLng, IGeoTransform } from '../geo/GeoTypes';
 import { IMapLayer } from '../map/MapTypes';
 
 /**
@@ -74,8 +76,8 @@ export class TileMapRenderer {
   private readonly viewport: ViewportTransform;
   private readonly tileManager: TileManager;
 
-  // Optional geo transform
-  private geoTransform: GeoTransform | null = null;
+  // Optional geo transform (supports both 3-point affine and multi-point triangulation)
+  private geoTransform: IGeoTransform | null = null;
 
   // Configuration
   private readonly config: TileMapRendererConfig;
@@ -90,6 +92,11 @@ export class TileMapRenderer {
   private animationFrameId: number | null = null;
   private lastFrameTime: number = 0;
   private isRunning: boolean = false;
+
+  // Fixed timestep for physics/logic (like real game engines)
+  private static readonly FIXED_TIMESTEP = 1 / 30; // 30 fps for physics
+  private static readonly MAX_ACCUMULATED_TIME = 0.1; // Prevent spiral of death
+  private physicsAccumulator: number = 0;
 
   // Event listeners
   private readonly eventListeners: Map<string, MapEventCallback[]> = new Map();
@@ -106,6 +113,10 @@ export class TileMapRenderer {
 
   // Map layers for markers, paths, and custom layers (e.g., POI labels)
   private readonly layers: Map<string, IMapLayer> = new Map();
+
+  // Custom render callback for overlays (calibration mode, etc.)
+  private customRenderCallback: ((ctx: CanvasRenderingContext2D) => void) | null = null;
+  private preLayerRenderCallback: ((ctx: CanvasRenderingContext2D) => void) | null = null;
 
   /**
    * Create a new TileMapRenderer
@@ -172,16 +183,38 @@ export class TileMapRenderer {
   }
 
   /**
-   * Set geo calibration for GPS support
+   * Set geo calibration for GPS support (3-point affine)
+   * Use this for maps without significant distortion
+   * @param config Configuration with 3 calibration points
    */
-  setGeoTransform(config: GeoTransformConfig): void {
+  setGeoTransform(config: GeoTransformConfigExtended): void {
     this.geoTransform = new GeoTransform(config);
   }
 
   /**
-   * Get current geo transform
+   * Set multi-point geo calibration for GPS support (Delaunay triangulation)
+   * Use this for maps with non-linear distortions (artistic maps, etc.)
+   * @param config Configuration with many calibration points (10+ recommended)
    */
-  getGeoTransform(): GeoTransform | null {
+  setMultiPointGeoTransform(config: MultiPointGeoTransformConfig): void {
+    this.geoTransform = new MultiPointGeoTransform(config);
+    console.log(`[TileMapRenderer] Multi-point geo transform set with ${config.calibrationPoints.length} points`);
+  }
+
+  /**
+   * Set Thin Plate Spline geo calibration for GPS support
+   * Use this for maps with non-linear distortions - provides smooth interpolation
+   * @param config Configuration with calibration points (4+ recommended)
+   */
+  setTPSTransform(config: TPSTransformConfig): void {
+    this.geoTransform = new ThinPlateSplineTransform(config);
+    console.log(`[TileMapRenderer] TPS geo transform set with ${config.calibrationPoints.length} points`);
+  }
+
+  /**
+   * Get current geo transform (either 3-point, multi-point, or TPS)
+   */
+  getGeoTransform(): IGeoTransform | null {
     return this.geoTransform;
   }
 
@@ -211,6 +244,10 @@ export class TileMapRenderer {
 
   /**
    * Main render loop
+   *
+   * Uses a semi-fixed timestep pattern like professional game engines:
+   * - Rendering runs at full framerate (60-144fps)
+   * - Physics/logic runs at fixed 30fps for stability and efficiency
    */
   private renderLoop(timestamp: number): void {
     if (!this.isRunning) return;
@@ -218,7 +255,7 @@ export class TileMapRenderer {
     const deltaTime = (timestamp - this.lastFrameTime) / 1000;
     this.lastFrameTime = timestamp;
 
-    // Update viewport
+    // Update viewport (runs at full framerate for smooth input)
     this.viewport.update();
 
     // Check for movement
@@ -230,17 +267,38 @@ export class TileMapRenderer {
     // Request tiles for current viewport
     this.requestVisibleTiles();
 
-    // Update tile opacities
+    // Update tile opacities (runs at full framerate for smooth fades)
     this.updateTileOpacities(deltaTime);
 
-    // Update layers (for animations/physics)
-    this.updateLayers(deltaTime);
+    // === Fixed Timestep for Physics/Logic ===
+    // Accumulate time and run physics at fixed intervals
+    this.physicsAccumulator += deltaTime;
 
-    // Render
+    // Clamp to prevent "spiral of death" if frame takes too long
+    if (this.physicsAccumulator > TileMapRenderer.MAX_ACCUMULATED_TIME) {
+      this.physicsAccumulator = TileMapRenderer.MAX_ACCUMULATED_TIME;
+    }
+
+    // Run physics updates at fixed rate (30fps)
+    while (this.physicsAccumulator >= TileMapRenderer.FIXED_TIMESTEP) {
+      this.fixedUpdate(TileMapRenderer.FIXED_TIMESTEP);
+      this.physicsAccumulator -= TileMapRenderer.FIXED_TIMESTEP;
+    }
+
+    // Render at full framerate
     this.render();
 
     // Continue loop
     this.animationFrameId = requestAnimationFrame(this.renderLoop.bind(this));
+  }
+
+  /**
+   * Fixed update for physics and logic
+   * Runs at 30fps regardless of render framerate
+   */
+  private fixedUpdate(dt: number): void {
+    // Update layers (physics simulation for POI labels, markers, etc.)
+    this.updateLayers(dt);
   }
 
   /**
@@ -356,8 +414,18 @@ export class TileMapRenderer {
     // Render tiles
     this.renderTiles();
 
+    // Pre-layer render callback (SVG overlays, etc. - rendered BEFORE labels)
+    if (this.preLayerRenderCallback) {
+      this.preLayerRenderCallback(ctx);
+    }
+
     // Render layers (markers, paths, custom layers like POI labels)
     this.renderLayers();
+
+    // Custom render callback (calibration overlays, etc.)
+    if (this.customRenderCallback) {
+      this.customRenderCallback(ctx);
+    }
 
     // Debug overlay
     if (this.debug) {
@@ -776,6 +844,22 @@ export class TileMapRenderer {
   }
 
   /**
+   * Set pre-layer render callback for overlays (SVG overlays, etc.)
+   * Called BEFORE layers are rendered (appears below labels/markers)
+   */
+  setPreLayerRenderCallback(callback: ((ctx: CanvasRenderingContext2D) => void) | null): void {
+    this.preLayerRenderCallback = callback;
+  }
+
+  /**
+   * Set custom render callback for overlays (calibration mode, etc.)
+   * Called AFTER layers are rendered, before debug overlay (appears above labels)
+   */
+  setCustomRenderCallback(callback: ((ctx: CanvasRenderingContext2D) => void) | null): void {
+    this.customRenderCallback = callback;
+  }
+
+  /**
    * Destroy renderer and clean up
    */
   destroy(): void {
@@ -784,5 +868,7 @@ export class TileMapRenderer {
     this.eventListeners.clear();
     this.tileOpacities.clear();
     this.layers.clear();
+    this.customRenderCallback = null;
+    this.preLayerRenderCallback = null;
   }
 }

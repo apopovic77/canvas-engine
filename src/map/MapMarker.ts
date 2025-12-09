@@ -8,8 +8,7 @@
  */
 
 import { Vector2, InterpolatedProperty } from 'arkturian-typescript-utils';
-import { GeoTransform } from '../geo/GeoTransform';
-import { LatLng } from '../geo/GeoTypes';
+import type { IGeoTransform, LatLng } from '../geo/GeoTypes';
 import { ViewportTransform } from '../utils/ViewportTransform';
 import { MapFeature, MarkerOptions, DEFAULT_MARKER_STYLE } from './MapTypes';
 
@@ -33,6 +32,7 @@ export class MapMarker implements MapFeature {
 
   // Visual properties
   label: string;
+  labelMinScale: number; // Minimum viewport scale to show label (0 = always)
   icon: HTMLImageElement | null = null;
   iconUrl: string | null = null;
   iconSize: { width: number; height: number };
@@ -74,6 +74,7 @@ export class MapMarker implements MapFeature {
 
     // Visual properties from options
     this.label = options.label ?? '';
+    this.labelMinScale = options.labelMinScale ?? 0; // 0 = always show
     this.color = options.color ?? DEFAULT_MARKER_STYLE.color;
     this.iconSize = options.iconSize ?? { width: DEFAULT_MARKER_STYLE.size, height: DEFAULT_MARKER_STYLE.size };
     this.iconAnchor = options.iconAnchor ?? { ...DEFAULT_MARKER_STYLE.iconAnchor };
@@ -128,7 +129,7 @@ export class MapMarker implements MapFeature {
   /**
    * Get pixel position using geo transform
    */
-  getPixelPosition(geoTransform: GeoTransform): Vector2 {
+  getPixelPosition(geoTransform: IGeoTransform): Vector2 {
     return geoTransform.latLngToPixel(this._latLng);
   }
 
@@ -136,7 +137,7 @@ export class MapMarker implements MapFeature {
    * Get screen position using viewport transform
    */
   getScreenPosition(
-    geoTransform: GeoTransform,
+    geoTransform: IGeoTransform,
     viewport: ViewportTransform
   ): Vector2 {
     const pixel = this.getPixelPosition(geoTransform);
@@ -156,7 +157,7 @@ export class MapMarker implements MapFeature {
    */
   render(
     ctx: CanvasRenderingContext2D,
-    geoTransform: GeoTransform,
+    geoTransform: IGeoTransform,
     viewport: ViewportTransform
   ): void {
     if (!this.visible || this.currentOpacity <= 0) return;
@@ -188,8 +189,8 @@ export class MapMarker implements MapFeature {
       this.drawDefaultMarker(ctx, screenPos.x, screenPos.y, scaleValue);
     }
 
-    // Draw label
-    if (this.label) {
+    // Draw label (only if scale is above minimum threshold)
+    if (this.label && viewport.scale >= this.labelMinScale) {
       this.drawLabel(ctx, screenPos.x, screenPos.y - renderHeight * this.iconAnchor.y);
     }
 
@@ -260,7 +261,7 @@ export class MapMarker implements MapFeature {
    */
   hitTest(
     screenPoint: Vector2,
-    geoTransform: GeoTransform,
+    geoTransform: IGeoTransform,
     viewport: ViewportTransform
   ): boolean {
     if (!this.visible) return false;

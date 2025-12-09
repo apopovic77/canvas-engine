@@ -9,8 +9,7 @@
  */
 
 import { Vector2 } from 'arkturian-typescript-utils';
-import { GeoTransform } from '../geo/GeoTransform';
-import { LatLng } from '../geo/GeoTypes';
+import type { IGeoTransform, LatLng } from '../geo/GeoTypes';
 import { ViewportTransform } from '../utils/ViewportTransform';
 import { MapFeature, LayerOptions, MarkerOptions, PathOptions } from './MapTypes';
 import { MapMarker } from './MapMarker';
@@ -191,7 +190,7 @@ export class MapLayer {
    */
   render(
     ctx: CanvasRenderingContext2D,
-    geoTransform: GeoTransform,
+    geoTransform: IGeoTransform,
     viewport: ViewportTransform
   ): void {
     if (!this.visible || this.opacity <= 0) return;
@@ -232,7 +231,7 @@ export class MapLayer {
    */
   hitTest(
     screenPoint: Vector2,
-    geoTransform: GeoTransform,
+    geoTransform: IGeoTransform,
     viewport: ViewportTransform
   ): MapFeature | null {
     if (!this.visible) return null;
@@ -261,7 +260,7 @@ export class MapLayer {
    */
   getFeaturesInBounds(
     bounds: { min: LatLng; max: LatLng },
-    geoTransform: GeoTransform
+    geoTransform: IGeoTransform
   ): MapFeature[] {
     const result: MapFeature[] = [];
 

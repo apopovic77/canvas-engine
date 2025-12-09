@@ -12,6 +12,8 @@ export interface GraphRenderContext {
     scale: number;
     offset: Vector2;
   };
+  /** Convenience accessor for viewport.scale */
+  scale: number;
   time: number; // Current time in seconds (for animations)
 }
 

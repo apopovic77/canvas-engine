@@ -43,6 +43,8 @@ export {
   AffineTransform,
   UTMConverter,
   GeoTransform,
+  MultiPointGeoTransform,
+  DelaunayTriangulation,
 } from './geo';
 
 export type {
@@ -51,8 +53,13 @@ export type {
   PixelCoord,
   CalibrationPoint,
   GeoTransformConfig,
+  GeoTransformConfigExtended,
+  MultiPointGeoTransformConfig,
+  ManualCorrection,
+  Triangle,
   GeoBounds,
   LatLngBounds,
+  IGeoTransform,
 } from './geo';
 
 // TileMap Module - Tile-based Map Rendering

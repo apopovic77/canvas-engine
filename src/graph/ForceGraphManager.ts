@@ -344,6 +344,7 @@ export class ForceGraphManager<T = any> {
     const context: GraphRenderContext = {
       ctx,
       viewport,
+      scale: viewport.scale, // Convenience accessor
       time: this.time,
     };
 

@@ -34,6 +34,8 @@ export class ViewportTransform {
   private rubberBandSpringBack = 0.08; // Speed of spring back (higher = faster)
   private lockVerticalPan = false; // If true, disable vertical panning and rubber banding
   private enableLeftClickPan = false; // If true, left-click drag pans (for map viewers)
+  private enableZoom = true; // If false, zoom via wheel/pinch is disabled
+  private enablePan = true; // If false, all panning is disabled (calibration mode)
 
   // Content bounds for bounds checking
   private contentBounds: ContentBounds | null = null;
@@ -101,6 +103,45 @@ export class ViewportTransform {
    */
   setEnableLeftClickPan(enable: boolean): void {
     this.enableLeftClickPan = enable;
+  }
+
+  /**
+   * Enable or disable zoom (wheel/pinch)
+   */
+  setEnableZoom(enable: boolean): void {
+    this.enableZoom = enable;
+  }
+
+  /**
+   * Enable or disable all panning (mouse drag, touch)
+   */
+  setEnablePan(enable: boolean): void {
+    this.enablePan = enable;
+  }
+
+  /**
+   * Set callback for before pan starts
+   * Called with screen coordinates and button. Return false to prevent panning.
+   * Use this for hit-testing interactive elements (e.g., draggable labels).
+   */
+  setBeforePanCallback(callback: ((screenX: number, screenY: number, button: number) => boolean) | null): void {
+    this.beforePanCallback = callback;
+  }
+
+  /**
+   * Set callback for mouse move events
+   * Called with screen coordinates during mouse move (including during external drag)
+   */
+  setOnMouseMoveCallback(callback: ((screenX: number, screenY: number) => void) | null): void {
+    this.onMouseMoveCallback = callback;
+  }
+
+  /**
+   * Set callback for mouse up events
+   * Called when mouse button is released
+   */
+  setOnMouseUpCallback(callback: (() => void) | null): void {
+    this.onMouseUpCallback = callback;
   }
 
   /**
@@ -341,6 +382,9 @@ export class ViewportTransform {
   private handleWheel = (e: WheelEvent) => {
     e.preventDefault();
 
+    // Skip if zoom is disabled (e.g., calibration mode)
+    if (!this.enableZoom) return;
+
     // Increased zoom speed for better control (0.002 instead of 0.001)
     const delta = -e.deltaY * 0.002;
     let newScale = this.targetScale * (1 + delta);
@@ -364,6 +408,24 @@ export class ViewportTransform {
   };
   
   private handleMouseDown = (e: MouseEvent) => {
+    const rect = this.canvas.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+
+    // Check if external callback wants to handle this (e.g., label dragging)
+    if (this.beforePanCallback) {
+      const shouldPreventPan = this.beforePanCallback(screenX, screenY, e.button);
+      if (shouldPreventPan) {
+        e.preventDefault();
+        this.externalDragActive = true;
+        this.canvas.style.cursor = 'grabbing';
+        return; // Don't start viewport panning
+      }
+    }
+
+    // Skip panning if disabled (e.g., calibration mode)
+    if (!this.enablePan) return;
+
     // Pan with middle or right button, or with Ctrl/Cmd key
     // Also left-click if enableLeftClickPan is true (for map viewers)
     const shouldPan = e.button === 1 || e.button === 2 || e.ctrlKey || e.metaKey ||
@@ -381,6 +443,16 @@ export class ViewportTransform {
   };
 
   private handleMouseMove = (e: MouseEvent) => {
+    const rect = this.canvas.getBoundingClientRect();
+    const screenX = e.clientX - rect.left;
+    const screenY = e.clientY - rect.top;
+
+    // External drag handling (e.g., label dragging)
+    if (this.externalDragActive && this.onMouseMoveCallback) {
+      this.onMouseMoveCallback(screenX, screenY);
+      return;
+    }
+
     if (this.isDragging) {
       const dx = e.clientX - this.dragStart.x;
       const dy = e.clientY - this.dragStart.y;
@@ -394,6 +466,16 @@ export class ViewportTransform {
   };
   
   private handleMouseUp = () => {
+    // External drag ended
+    if (this.externalDragActive) {
+      this.externalDragActive = false;
+      this.canvas.style.cursor = 'default';
+      if (this.onMouseUpCallback) {
+        this.onMouseUpCallback();
+      }
+      return;
+    }
+
     if (this.isDragging) {
       this.isDragging = false;
       this.canvas.style.cursor = 'default';
@@ -405,8 +487,17 @@ export class ViewportTransform {
   private touchStartScale = 1;
   private touchStartCenter = new Vector2(0, 0); // Midpoint between two fingers
 
+  // Mouse event callbacks for external handling (e.g., label dragging)
+  private beforePanCallback: ((screenX: number, screenY: number, button: number) => boolean) | null = null;
+  private onMouseMoveCallback: ((screenX: number, screenY: number) => void) | null = null;
+  private onMouseUpCallback: (() => void) | null = null;
+  private externalDragActive = false; // When true, don't do viewport panning
+
   private handleTouchStart = (e: TouchEvent) => {
-    if (e.touches.length === 2) {
+    // Skip if panning/zooming is disabled (calibration mode)
+    if (!this.enablePan && !this.enableZoom) return;
+
+    if (e.touches.length === 2 && this.enableZoom) {
       e.preventDefault();
       const touch1 = e.touches[0];
       const touch2 = e.touches[1];
@@ -420,7 +511,7 @@ export class ViewportTransform {
       const rect = this.canvas.getBoundingClientRect();
       this.touchStartCenter.x = ((touch1.clientX + touch2.clientX) / 2) - rect.left;
       this.touchStartCenter.y = ((touch1.clientY + touch2.clientY) / 2) - rect.top;
-    } else if (e.touches.length === 1) {
+    } else if (e.touches.length === 1 && this.enablePan) {
       // Prevent default to avoid iOS Safari scroll/bounce behavior
       e.preventDefault();
       const touch = e.touches[0];

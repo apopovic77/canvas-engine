@@ -15,8 +15,8 @@ import * as Vec from './VectorMath';
 export class BlockerNode {
   public readonly id: string;
   public readonly position: Vector2;
-  public readonly radius: number;
-  public readonly repulsionStrength: number; // How strongly it repels
+  public radius: number;
+  public repulsionStrength: number; // How strongly it repels (mutable for runtime tuning)
 
   constructor(
     id: string,

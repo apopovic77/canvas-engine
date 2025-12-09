@@ -8,8 +8,7 @@
  */
 
 import { Vector2, InterpolatedProperty } from 'arkturian-typescript-utils';
-import { GeoTransform } from '../geo/GeoTransform';
-import { LatLng } from '../geo/GeoTypes';
+import type { IGeoTransform, LatLng } from '../geo/GeoTypes';
 import { UTMConverter } from '../geo/UTMConverter';
 import { ViewportTransform } from '../utils/ViewportTransform';
 import { MapFeature, PathOptions, DEFAULT_PATH_STYLE } from './MapTypes';
@@ -140,7 +139,7 @@ export class MapPath implements MapFeature {
   /**
    * Get pixel path using geo transform
    */
-  getPixelPath(geoTransform: GeoTransform): Vector2[] {
+  getPixelPath(geoTransform: IGeoTransform): Vector2[] {
     return this._points.map(p => geoTransform.latLngToPixel(p));
   }
 
@@ -148,7 +147,7 @@ export class MapPath implements MapFeature {
    * Get screen path using viewport transform
    */
   getScreenPath(
-    geoTransform: GeoTransform,
+    geoTransform: IGeoTransform,
     viewport: ViewportTransform
   ): Vector2[] {
     return this.getPixelPath(geoTransform).map(p => viewport.worldToScreen(p));
@@ -251,7 +250,7 @@ export class MapPath implements MapFeature {
    */
   render(
     ctx: CanvasRenderingContext2D,
-    geoTransform: GeoTransform,
+    geoTransform: IGeoTransform,
     viewport: ViewportTransform
   ): void {
     if (!this.visible || this._points.length < 2 || this.currentOpacity <= 0) {
@@ -340,7 +339,7 @@ export class MapPath implements MapFeature {
    */
   hitTest(
     screenPoint: Vector2,
-    geoTransform: GeoTransform,
+    geoTransform: IGeoTransform,
     viewport: ViewportTransform,
     tolerance: number = 10
   ): boolean {

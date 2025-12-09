@@ -4,6 +4,8 @@
  * @module geo
  */
 
+import { Vector2 } from 'arkturian-typescript-utils';
+
 /**
  * WGS84 Geographic coordinate (latitude/longitude)
  */
@@ -74,4 +76,24 @@ export interface LatLngBounds {
   south: number;  // min lat
   east: number;   // max lng
   west: number;   // min lng
+}
+
+/**
+ * Common interface for geo transformation classes
+ * Both GeoTransform (3-point) and MultiPointGeoTransform implement this
+ */
+export interface IGeoTransform {
+  /**
+   * Convert geographic coordinate to pixel position
+   * @param latLng Geographic coordinate (WGS84)
+   * @returns Pixel position on the image
+   */
+  latLngToPixel(latLng: LatLng): Vector2;
+
+  /**
+   * Convert pixel position to geographic coordinate
+   * @param pixel Pixel position on the image
+   * @returns Geographic coordinate (WGS84)
+   */
+  pixelToLatLng(pixel: Vector2): LatLng;
 }
