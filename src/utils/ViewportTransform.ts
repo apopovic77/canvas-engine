@@ -14,6 +14,7 @@ export class ViewportTransform {
   // Current interpolated values (what's actually rendered)
   public scale = 1;
   public offset = new Vector2(0, 0);
+  public rotation = 0; // Rotation in radians (0 = north up)
 
   // Target values (where we want to go)
   private targetScale = 1;
@@ -117,6 +118,24 @@ export class ViewportTransform {
    */
   setEnablePan(enable: boolean): void {
     this.enablePan = enable;
+  }
+
+  /**
+   * Enable or disable two-finger pan (translation while pinching)
+   * When enabled: parallel two-finger movement pans the map during pinch
+   * When disabled: only zoom happens during two-finger gesture (classic behavior)
+   */
+  setEnableTwoFingerPan(enable: boolean): void {
+    this.enableTwoFingerPan = enable;
+  }
+
+  /**
+   * Enable or disable two-finger rotation
+   * When enabled: twisting two fingers rotates the map
+   * When disabled: no rotation from touch gestures
+   */
+  setEnableTwoFingerRotation(enable: boolean): void {
+    this.enableTwoFingerRotation = enable;
   }
 
   /**
@@ -486,6 +505,14 @@ export class ViewportTransform {
   private touchStartDistance = 0;
   private touchStartScale = 1;
   private touchStartCenter = new Vector2(0, 0); // Midpoint between two fingers
+  private touchStartAngle = 0; // Angle between two fingers at start
+  private touchStartRotation = 0; // Map rotation at touch start
+  private touchLastMidX = 0; // Last midpoint X for incremental pan
+  private touchLastMidY = 0; // Last midpoint Y for incremental pan
+
+  // Two-finger gesture configuration
+  private enableTwoFingerPan = true; // Pan while pinching (parallel finger movement)
+  private enableTwoFingerRotation = false; // Rotate by twisting two fingers
 
   // Mouse event callbacks for external handling (e.g., label dragging)
   private beforePanCallback: ((screenX: number, screenY: number, button: number) => boolean) | null = null;
@@ -511,6 +538,17 @@ export class ViewportTransform {
       const rect = this.canvas.getBoundingClientRect();
       this.touchStartCenter.x = ((touch1.clientX + touch2.clientX) / 2) - rect.left;
       this.touchStartCenter.y = ((touch1.clientY + touch2.clientY) / 2) - rect.top;
+
+      // Store midpoint in screen coords for incremental pan tracking
+      this.touchLastMidX = (touch1.clientX + touch2.clientX) / 2;
+      this.touchLastMidY = (touch1.clientY + touch2.clientY) / 2;
+
+      // Store angle between fingers for rotation tracking
+      this.touchStartAngle = Math.atan2(
+        touch2.clientY - touch1.clientY,
+        touch2.clientX - touch1.clientX
+      );
+      this.touchStartRotation = this.rotation;
     } else if (e.touches.length === 1 && this.enablePan) {
       // Prevent default to avoid iOS Safari scroll/bounce behavior
       e.preventDefault();
@@ -528,6 +566,8 @@ export class ViewportTransform {
       e.preventDefault();
       const touch1 = e.touches[0];
       const touch2 = e.touches[1];
+
+      // --- Zoom (pinch) ---
       const distance = Math.hypot(
         touch2.clientX - touch1.clientX,
         touch2.clientY - touch1.clientY
@@ -541,16 +581,63 @@ export class ViewportTransform {
       }
 
       // Zoom towards the midpoint between fingers (iOS-style pinch-to-zoom)
-      const scaleRatio = newScale / this.targetScale;
-      this.targetOffset.x = this.touchStartCenter.x - (this.touchStartCenter.x - this.targetOffset.x) * scaleRatio;
-      this.targetOffset.y = this.touchStartCenter.y - (this.touchStartCenter.y - this.targetOffset.y) * scaleRatio;
+      const midX = (touch1.clientX + touch2.clientX) / 2;
+      const midY = (touch1.clientY + touch2.clientY) / 2;
+      const rect = this.canvas.getBoundingClientRect();
+      const canvasMidX = midX - rect.left;
+      const canvasMidY = midY - rect.top;
 
+      const scaleRatio = newScale / this.targetScale;
+      this.targetOffset.x = canvasMidX - (canvasMidX - this.targetOffset.x) * scaleRatio;
+      this.targetOffset.y = canvasMidY - (canvasMidY - this.targetOffset.y) * scaleRatio;
       this.targetScale = newScale;
+
+      // --- Pan (parallel two-finger movement) ---
+      if (this.enableTwoFingerPan) {
+        let panDx = midX - this.touchLastMidX;
+        let panDy = midY - this.touchLastMidY;
+
+        // When map is rotated, rotate pan delta in opposite direction
+        if (this.rotation !== 0) {
+          const cos = Math.cos(-this.rotation);
+          const sin = Math.sin(-this.rotation);
+          const rotatedDx = panDx * cos - panDy * sin;
+          const rotatedDy = panDx * sin + panDy * cos;
+          panDx = rotatedDx;
+          panDy = rotatedDy;
+        }
+
+        this.targetOffset.x += panDx;
+        this.targetOffset.y += panDy;
+      }
+      this.touchLastMidX = midX;
+      this.touchLastMidY = midY;
+
+      // --- Rotation (two-finger twist) ---
+      if (this.enableTwoFingerRotation) {
+        const currentAngle = Math.atan2(
+          touch2.clientY - touch1.clientY,
+          touch2.clientX - touch1.clientX
+        );
+        this.rotation = this.touchStartRotation + (currentAngle - this.touchStartAngle);
+      }
+
     } else if (e.touches.length === 1 && this.isDragging) {
       e.preventDefault();
       const touch = e.touches[0];
-      const dx = touch.clientX - this.dragStart.x;
-      const dy = touch.clientY - this.dragStart.y;
+      let dx = touch.clientX - this.dragStart.x;
+      let dy = touch.clientY - this.dragStart.y;
+
+      // When map is rotated, rotate drag delta in opposite direction
+      // so panning feels natural (drag up = map moves up visually)
+      if (this.rotation !== 0) {
+        const cos = Math.cos(-this.rotation);
+        const sin = Math.sin(-this.rotation);
+        const rotatedDx = dx * cos - dy * sin;
+        const rotatedDy = dx * sin + dy * cos;
+        dx = rotatedDx;
+        dy = rotatedDy;
+      }
 
       // Apply rubber band resistance when dragging outside bounds
       const resisted = this.applyDragResistance(dx, dy);
