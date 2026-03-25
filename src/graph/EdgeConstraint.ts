@@ -80,13 +80,10 @@ export class EdgeConstraint<T = any> {
       const force = Vec.scale(direction, forceMagnitude);
       this.node.applyForce(force);
     } else if (this.type === EdgeType.RIGID) {
-      // Rigid constraint: Move node to exact distance
+      // Rigid constraint: Snap node to exact distance (true rigid, not force-based)
       const targetPos = Vec.add(pinPos, Vec.scale(direction, this.length));
-      const correction = Vec.subtract(targetPos, nodePos);
-
-      // Apply strong correction force (rigid behavior)
-      const correctionForce = Vec.scale(correction, 10); // Strong correction
-      this.node.applyForce(correctionForce);
+      this.node.position.x = targetPos.x;
+      this.node.position.y = targetPos.y;
     }
   }
 

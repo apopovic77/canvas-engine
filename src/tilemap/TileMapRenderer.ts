@@ -407,9 +407,20 @@ export class TileMapRenderer {
   render(): void {
     const { ctx, canvas } = this;
 
-    // Clear canvas
+    // Clear canvas (before rotation transform)
     ctx.fillStyle = this.backgroundColor;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Apply rotation around viewport center if active
+    const hasRotation = this.viewport.rotation !== 0;
+    if (hasRotation) {
+      ctx.save();
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+      ctx.translate(cx, cy);
+      ctx.rotate(this.viewport.rotation);
+      ctx.translate(-cx, -cy);
+    }
 
     // Render tiles
     this.renderTiles();
@@ -427,7 +438,12 @@ export class TileMapRenderer {
       this.customRenderCallback(ctx);
     }
 
-    // Debug overlay
+    // Restore rotation transform
+    if (hasRotation) {
+      ctx.restore();
+    }
+
+    // Debug overlay (rendered without rotation so text stays readable)
     if (this.debug) {
       this.renderDebug();
     }

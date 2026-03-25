@@ -15,6 +15,7 @@ export class ViewportTransform {
   public scale = 1;
   public offset = new Vector2(0, 0);
   public rotation = 0; // Rotation in radians (0 = north up)
+  private targetRotation = 0; // Target rotation for smooth animation
 
   // Target values (where we want to go)
   private targetScale = 1;
@@ -217,6 +218,15 @@ export class ViewportTransform {
     // Interpolate offset
     this.offset.x += (this.targetOffset.x - this.offset.x) * this.speedFactor;
     this.offset.y += (this.targetOffset.y - this.offset.y) * this.speedFactor;
+
+    // Interpolate rotation (shortest path)
+    let rotDiff = this.targetRotation - this.rotation;
+    // Normalize to [-PI, PI] for shortest rotation path
+    while (rotDiff > Math.PI) rotDiff -= 2 * Math.PI;
+    while (rotDiff < -Math.PI) rotDiff += 2 * Math.PI;
+    this.rotation += rotDiff * this.speedFactor;
+    // Snap when close enough
+    if (Math.abs(rotDiff) < 0.001) this.rotation = this.targetRotation;
   }
 
   getTargetScale(): number {
@@ -225,6 +235,11 @@ export class ViewportTransform {
 
   getTargetOffset(): { x: number; y: number } {
     return { x: this.targetOffset.x, y: this.targetOffset.y };
+  }
+
+  /** Smoothly animate rotation to target (radians) */
+  setTargetRotation(rotation: number): void {
+    this.targetRotation = rotation;
   }
 
   /**
@@ -473,8 +488,19 @@ export class ViewportTransform {
     }
 
     if (this.isDragging) {
-      const dx = e.clientX - this.dragStart.x;
-      const dy = e.clientY - this.dragStart.y;
+      let dx = e.clientX - this.dragStart.x;
+      let dy = e.clientY - this.dragStart.y;
+
+      // When map is rotated, rotate drag delta in opposite direction
+      // so panning feels natural (drag up = map moves up visually)
+      if (this.rotation !== 0) {
+        const cos = Math.cos(-this.rotation);
+        const sin = Math.sin(-this.rotation);
+        const rdx = dx * cos - dy * sin;
+        const rdy = dx * sin + dy * cos;
+        dx = rdx;
+        dy = rdy;
+      }
 
       // Apply rubber band resistance when dragging outside bounds
       const resisted = this.applyDragResistance(dx, dy);
@@ -650,6 +676,8 @@ export class ViewportTransform {
   private handleTouchEnd = () => {
     this.isDragging = false;
     this.touchStartDistance = 0;
+    // Sync target rotation with current rotation after gesture ends
+    this.targetRotation = this.rotation;
   };
   
   /**
@@ -731,6 +759,14 @@ export class ViewportTransform {
   }
   
   applyTransform(ctx: CanvasRenderingContext2D) {
+    // For rotation: rotate around viewport center
+    if (this.rotation !== 0) {
+      const cx = this.viewportWidth / 2;
+      const cy = this.viewportHeight / 2;
+      ctx.translate(cx, cy);
+      ctx.rotate(this.rotation);
+      ctx.translate(-cx, -cy);
+    }
     ctx.translate(this.offset.x, this.offset.y);
     ctx.scale(this.scale, this.scale);
   }
