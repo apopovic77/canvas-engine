@@ -343,11 +343,11 @@ export class TileMapRenderer {
     const w = this.canvas.width;
     const h = this.canvas.height;
 
-    // Transform all 4 screen corners to world space
-    const c0 = this.viewport.screenToWorld(0, 0);
-    const c1 = this.viewport.screenToWorld(w, 0);
-    const c2 = this.viewport.screenToWorld(w, h);
-    const c3 = this.viewport.screenToWorld(0, h);
+    // Transform all 4 screen corners to world space (with rotation)
+    const c0 = this.viewport.screenToWorldRotated(0, 0);
+    const c1 = this.viewport.screenToWorldRotated(w, 0);
+    const c2 = this.viewport.screenToWorldRotated(w, h);
+    const c3 = this.viewport.screenToWorldRotated(0, h);
 
     // Axis-aligned bounding box
     const minX = Math.min(c0.x, c1.x, c2.x, c3.x);
