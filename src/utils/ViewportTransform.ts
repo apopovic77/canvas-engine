@@ -674,10 +674,13 @@ export class ViewportTransform {
   };
   
   private handleTouchEnd = () => {
+    // Only sync targetRotation if user was doing a 2-finger rotation gesture.
+    // Otherwise programmatic rotation (compass, autoAlign) gets overwritten.
+    if (this.touchStartDistance > 0) {
+      this.targetRotation = this.rotation;
+    }
     this.isDragging = false;
     this.touchStartDistance = 0;
-    // Sync target rotation with current rotation after gesture ends
-    this.targetRotation = this.rotation;
   };
   
   /**
