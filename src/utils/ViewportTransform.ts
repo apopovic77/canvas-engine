@@ -239,7 +239,6 @@ export class ViewportTransform {
 
   /** Smoothly animate rotation to target (radians) */
   setTargetRotation(rotation: number): void {
-    console.log(`[Viewport] setTargetRotation: ${(rotation * 180 / Math.PI).toFixed(1)}° (was ${(this.targetRotation * 180 / Math.PI).toFixed(1)}°)`);
     this.targetRotation = rotation;
   }
 
