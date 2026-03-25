@@ -336,19 +336,30 @@ export class TileMapRenderer {
   }
 
   /**
-   * Get viewport bounds in world coordinates
+   * Get viewport bounds in world coordinates.
+   * When map is rotated, computes axis-aligned bounding box from all 4 screen corners.
    */
   private getViewportWorldBounds(): Rect {
-    const topLeft = this.viewport.screenToWorld(new Vector2(0, 0));
-    const bottomRight = this.viewport.screenToWorld(
-      new Vector2(this.canvas.width, this.canvas.height)
-    );
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+
+    // Transform all 4 screen corners to world space
+    const c0 = this.viewport.screenToWorld(0, 0);
+    const c1 = this.viewport.screenToWorld(w, 0);
+    const c2 = this.viewport.screenToWorld(w, h);
+    const c3 = this.viewport.screenToWorld(0, h);
+
+    // Axis-aligned bounding box
+    const minX = Math.min(c0.x, c1.x, c2.x, c3.x);
+    const minY = Math.min(c0.y, c1.y, c2.y, c3.y);
+    const maxX = Math.max(c0.x, c1.x, c2.x, c3.x);
+    const maxY = Math.max(c0.y, c1.y, c2.y, c3.y);
 
     return {
-      x: topLeft.x,
-      y: topLeft.y,
-      width: bottomRight.x - topLeft.x,
-      height: bottomRight.y - topLeft.y,
+      x: minX,
+      y: minY,
+      width: maxX - minX,
+      height: maxY - minY,
     };
   }
 

@@ -431,8 +431,20 @@ export class ViewportTransform {
 
     // Zoom towards mouse position
     const rect = this.canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+    let mouseX = e.clientX - rect.left;
+    let mouseY = e.clientY - rect.top;
+
+    // Un-rotate mouse position to get correct offset adjustment
+    if (this.rotation !== 0) {
+      const cx = this.viewportWidth / 2;
+      const cy = this.viewportHeight / 2;
+      const cos = Math.cos(-this.rotation);
+      const sin = Math.sin(-this.rotation);
+      const dx = mouseX - cx;
+      const dy = mouseY - cy;
+      mouseX = dx * cos - dy * sin + cx;
+      mouseY = dx * sin + dy * cos + cy;
+    }
 
     // Adjust target offset to zoom towards mouse position
     const scaleFactor = newScale / this.targetScale;
@@ -778,17 +790,25 @@ export class ViewportTransform {
   screenToWorld(screenX: number, screenY: number): Vector2;
   screenToWorld(screenPos: Vector2): Vector2;
   screenToWorld(screenXOrPos: number | Vector2, screenY?: number): Vector2 {
-    if (typeof screenXOrPos === 'number') {
-      return new Vector2(
-        (screenXOrPos - this.offset.x) / this.scale,
-        (screenY! - this.offset.y) / this.scale
-      );
-    } else {
-      return new Vector2(
-        (screenXOrPos.x - this.offset.x) / this.scale,
-        (screenXOrPos.y - this.offset.y) / this.scale
-      );
+    let sx = typeof screenXOrPos === 'number' ? screenXOrPos : screenXOrPos.x;
+    let sy = typeof screenXOrPos === 'number' ? screenY! : screenXOrPos.y;
+
+    // Undo rotation around viewport center
+    if (this.rotation !== 0) {
+      const cx = this.viewportWidth / 2;
+      const cy = this.viewportHeight / 2;
+      const cos = Math.cos(-this.rotation);
+      const sin = Math.sin(-this.rotation);
+      const dx = sx - cx;
+      const dy = sy - cy;
+      sx = dx * cos - dy * sin + cx;
+      sy = dx * sin + dy * cos + cy;
     }
+
+    return new Vector2(
+      (sx - this.offset.x) / this.scale,
+      (sy - this.offset.y) / this.scale
+    );
   }
 
   /**
@@ -797,17 +817,26 @@ export class ViewportTransform {
   worldToScreen(worldX: number, worldY: number): Vector2;
   worldToScreen(worldPos: Vector2): Vector2;
   worldToScreen(worldXOrPos: number | Vector2, worldY?: number): Vector2 {
-    if (typeof worldXOrPos === 'number') {
-      return new Vector2(
-        worldXOrPos * this.scale + this.offset.x,
-        worldY! * this.scale + this.offset.y
-      );
-    } else {
-      return new Vector2(
-        worldXOrPos.x * this.scale + this.offset.x,
-        worldXOrPos.y * this.scale + this.offset.y
-      );
+    const wx = typeof worldXOrPos === 'number' ? worldXOrPos : worldXOrPos.x;
+    const wy = typeof worldXOrPos === 'number' ? worldY! : worldXOrPos.y;
+
+    // Apply scale + offset
+    let sx = wx * this.scale + this.offset.x;
+    let sy = wy * this.scale + this.offset.y;
+
+    // Apply rotation around viewport center
+    if (this.rotation !== 0) {
+      const cx = this.viewportWidth / 2;
+      const cy = this.viewportHeight / 2;
+      const cos = Math.cos(this.rotation);
+      const sin = Math.sin(this.rotation);
+      const dx = sx - cx;
+      const dy = sy - cy;
+      sx = dx * cos - dy * sin + cx;
+      sy = dx * sin + dy * cos + cy;
     }
+
+    return new Vector2(sx, sy);
   }
 
   /**
