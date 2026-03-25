@@ -26,6 +26,9 @@ coverage/
 # DevOps
 .devops/starter-config.json
 
+# Auth tokens
+.npmrc
+
 # Demo app (not published)
 src/App.tsx
 src/App.css
