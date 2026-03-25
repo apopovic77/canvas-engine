@@ -431,8 +431,21 @@ export class ViewportTransform {
 
     // Zoom towards mouse position
     const rect = this.canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+    let mouseX = e.clientX - rect.left;
+    let mouseY = e.clientY - rect.top;
+
+    // Un-rotate mouse position: offset operates in unrotated space,
+    // but mouse is in rotated screen space
+    if (this.rotation !== 0) {
+      const cx = this.viewportWidth / 2;
+      const cy = this.viewportHeight / 2;
+      const cos = Math.cos(-this.rotation);
+      const sin = Math.sin(-this.rotation);
+      const dx = mouseX - cx;
+      const dy = mouseY - cy;
+      mouseX = dx * cos - dy * sin + cx;
+      mouseY = dx * sin + dy * cos + cy;
+    }
 
     // Adjust target offset to zoom towards mouse position
     const scaleFactor = newScale / this.targetScale;
