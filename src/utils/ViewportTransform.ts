@@ -659,7 +659,9 @@ export class ViewportTransform {
           touch2.clientY - touch1.clientY,
           touch2.clientX - touch1.clientX
         );
-        this.rotation = this.touchStartRotation + (currentAngle - this.touchStartAngle);
+        const newRotation = this.touchStartRotation + (currentAngle - this.touchStartAngle);
+        this.rotation = newRotation;
+        this.targetRotation = newRotation; // Keep in sync — prevents update() fighting back
       }
 
     } else if (e.touches.length === 1 && this.isDragging) {
