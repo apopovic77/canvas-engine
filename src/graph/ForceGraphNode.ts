@@ -16,6 +16,7 @@ export class ForceGraphNode<T = any> {
 
   // Physics properties
   public position: Vector2;
+  public previousPosition: Vector2; // Position at previous physics tick (for interpolation)
   public velocity: Vector2;
   public force: Vector2;
   public mass: number;
@@ -42,17 +43,19 @@ export class ForceGraphNode<T = any> {
 
     // Physics
     this.position = Vec.clone(position);
+    this.previousPosition = Vec.clone(position);
     this.velocity = new Vector2(0, 0);
     this.force = new Vector2(0, 0);
     this.mass = mass;
     this.radius = radius;
 
-    // Visual (interpolated for smooth rendering)
+    // Visual (interpolated for smooth rendering between physics ticks)
+    // Duration 0.04s (~1 physics frame at 30fps) for minimal latency
     this.visualPosition = new InterpolatedProperty<Vector2>(
       'position',
       Vec.clone(position),
       Vec.clone(position),
-      0.3
+      0.04
     );
     this.visualRadius = new InterpolatedProperty<number>(
       'radius',
@@ -91,6 +94,9 @@ export class ForceGraphNode<T = any> {
    * @param deltaTime - Time step in seconds
    */
   public updatePhysics(deltaTime: number): void {
+    // Store previous position for render interpolation
+    this.previousPosition = Vec.clone(this.position);
+
     if (this.isFixed) return;
 
     // F = ma → a = F/m
@@ -108,6 +114,17 @@ export class ForceGraphNode<T = any> {
 
     // Update visual target (will smoothly interpolate)
     this.visualPosition.targetValue = Vec.clone(this.position);
+  }
+
+  /**
+   * Get interpolated position for rendering.
+   * @param alpha - Physics interpolation factor (0 = previous tick, 1 = current tick)
+   */
+  public getInterpolatedPosition(alpha: number): Vector2 {
+    return new Vector2(
+      this.previousPosition.x + (this.position.x - this.previousPosition.x) * alpha,
+      this.previousPosition.y + (this.position.y - this.previousPosition.y) * alpha,
+    );
   }
 
   /**

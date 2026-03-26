@@ -97,6 +97,7 @@ export class TileMapRenderer {
   private static readonly FIXED_TIMESTEP = 1 / 30; // 30 fps for physics
   private static readonly MAX_ACCUMULATED_TIME = 0.1; // Prevent spiral of death
   private physicsAccumulator: number = 0;
+  private physicsAlpha: number = 0;
 
   // Event listeners
   private readonly eventListeners: Map<string, MapEventCallback[]> = new Map();
@@ -219,6 +220,16 @@ export class TileMapRenderer {
   }
 
   /**
+   * Get physics interpolation alpha (0-1).
+   * Fraction of time between last physics tick and next.
+   * Use to interpolate between previous and current physics state
+   * for smooth rendering at higher framerates.
+   */
+  getPhysicsAlpha(): number {
+    return this.physicsAlpha;
+  }
+
+  /**
    * Start the render loop
    */
   start(): void {
@@ -284,6 +295,10 @@ export class TileMapRenderer {
       this.fixedUpdate(TileMapRenderer.FIXED_TIMESTEP);
       this.physicsAccumulator -= TileMapRenderer.FIXED_TIMESTEP;
     }
+
+    // Physics interpolation alpha: fraction of timestep remaining
+    // Used by renderers to interpolate between physics states for smooth 60fps
+    this.physicsAlpha = this.physicsAccumulator / TileMapRenderer.FIXED_TIMESTEP;
 
     // Render at full framerate
     this.render();
