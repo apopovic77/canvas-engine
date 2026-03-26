@@ -592,6 +592,19 @@ export class ViewportTransform {
       // Prevent default to avoid iOS Safari scroll/bounce behavior
       e.preventDefault();
       const touch = e.touches[0];
+      const rect = this.canvas.getBoundingClientRect();
+      const screenX = touch.clientX - rect.left;
+      const screenY = touch.clientY - rect.top;
+
+      // Check if external callback wants to handle this (e.g., label dragging)
+      if (this.beforePanCallback) {
+        const shouldPreventPan = this.beforePanCallback(screenX, screenY, 0);
+        if (shouldPreventPan) {
+          this.externalDragActive = true;
+          return; // Don't start viewport panning
+        }
+      }
+
       this.isDragging = true;
       this.dragStart.x = touch.clientX;
       this.dragStart.y = touch.clientY;
@@ -663,6 +676,16 @@ export class ViewportTransform {
         this.targetRotation = newRotation; // Keep in sync — prevents update() fighting back
       }
 
+    } else if (e.touches.length === 1 && this.externalDragActive) {
+      // External drag (e.g., balloon label dragging)
+      e.preventDefault();
+      const touch = e.touches[0];
+      const rect = this.canvas.getBoundingClientRect();
+      const screenX = touch.clientX - rect.left;
+      const screenY = touch.clientY - rect.top;
+      if (this.onMouseMoveCallback) {
+        this.onMouseMoveCallback(screenX, screenY);
+      }
     } else if (e.touches.length === 1 && this.isDragging) {
       e.preventDefault();
       const touch = e.touches[0];
@@ -693,6 +716,13 @@ export class ViewportTransform {
     // Otherwise programmatic rotation (compass, autoAlign) gets overwritten.
     if (this.touchStartDistance > 0) {
       this.targetRotation = this.rotation;
+    }
+    // End external drag (label dragging)
+    if (this.externalDragActive) {
+      this.externalDragActive = false;
+      if (this.onMouseUpCallback) {
+        this.onMouseUpCallback();
+      }
     }
     this.isDragging = false;
     this.touchStartDistance = 0;
