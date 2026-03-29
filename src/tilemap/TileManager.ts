@@ -319,9 +319,26 @@ export class TileManager {
 
     // ALWAYS add fallback tiles for smooth transitions
     // The renderer will use them until target tiles are fully faded in
+
+    // Fallback DOWN: lower zoom levels (coarser tiles covering larger areas)
     for (let fallbackZoom = zoom - 1; fallbackZoom >= 0; fallbackZoom--) {
       const fallbackTiles = this.getVisibleTiles(viewportBounds, fallbackZoom);
+      for (const tile of fallbackTiles) {
+        if (tile.state === 'loaded' && tile.image && !addedIds.has(tile.id)) {
+          result.push(tile);
+          addedIds.add(tile.id);
+        }
+      }
+    }
 
+    // Fallback UP: higher zoom levels (finer tiles from previous zoom-in)
+    // These cover the viewport when zooming OUT and lower-res tiles aren't loaded yet.
+    // Without this, zooming out causes a flash of empty background.
+    // Only check +1 and +2 to avoid rendering hundreds of tiny tiles.
+    const maxZoom = this.quadTrees.size - 1;
+    const maxFallbackUp = Math.min(zoom + 2, maxZoom);
+    for (let fallbackZoom = zoom + 1; fallbackZoom <= maxFallbackUp; fallbackZoom++) {
+      const fallbackTiles = this.getVisibleTiles(viewportBounds, fallbackZoom);
       for (const tile of fallbackTiles) {
         if (tile.state === 'loaded' && tile.image && !addedIds.has(tile.id)) {
           result.push(tile);
