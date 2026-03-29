@@ -492,8 +492,22 @@ export class TileMapRenderer {
     // Sort tiles by zoom (lower zoom first for proper layering)
     tiles.sort((a, b) => a.zoom - b.zoom);
 
+    // Check if ALL visible target-zoom tiles are loaded
+    // If yes, skip fallback-up tiles (they cause aliasing when downscaled)
+    const targetTiles = tiles.filter(t => t.zoom === zoom);
+    const visibleTargetTiles = this.tileManager.getVisibleTileCount(viewportBounds, zoom);
+    const allTargetLoaded = targetTiles.length >= visibleTargetTiles;
+
+    // High-quality downscaling
+    this.ctx.imageSmoothingEnabled = true;
+    this.ctx.imageSmoothingQuality = 'high';
+
     for (const tile of tiles) {
       if (!tile.image) continue;
+
+      // Skip fallback-up tiles when all target tiles are loaded
+      // They cause aliasing/grain when higher-res tiles are downscaled to tiny screen areas
+      if (tile.zoom > zoom && allTargetLoaded) continue;
 
       const opacity = this.getTileOpacity(tile);
       if (opacity <= 0) continue;
@@ -530,6 +544,25 @@ export class TileMapRenderer {
         0, 0, srcWidth, srcHeight,  // Source rectangle (only valid content)
         screenTopLeft.x, screenTopLeft.y, screenWidth, screenHeight  // Destination
       );
+
+      // Debug: show tile zoom level overlay
+      if (this.debug) {
+        const isTarget = tile.zoom === zoom;
+        const isFallbackUp = tile.zoom > zoom;
+        const isFallbackDown = tile.zoom < zoom;
+        // Color: green=target, blue=fallback down, red=fallback up (stale higher zoom)
+        const color = isTarget ? 'rgba(0,255,0,0.3)' : isFallbackUp ? 'rgba(255,0,0,0.2)' : 'rgba(0,100,255,0.2)';
+        const borderColor = isTarget ? '#00ff00' : isFallbackUp ? '#ff0000' : '#0066ff';
+        this.ctx.fillStyle = color;
+        this.ctx.fillRect(screenTopLeft.x, screenTopLeft.y, screenWidth, screenHeight);
+        this.ctx.strokeStyle = borderColor;
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(screenTopLeft.x, screenTopLeft.y, screenWidth, screenHeight);
+        // Label
+        this.ctx.fillStyle = '#ffffff';
+        this.ctx.font = '14px monospace';
+        this.ctx.fillText(`Z${tile.zoom}`, screenTopLeft.x + 4, screenTopLeft.y + 16);
+      }
     }
 
     // Reset alpha

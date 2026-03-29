@@ -406,6 +406,11 @@ export class TileManager {
   /**
    * Get status of a specific tile
    */
+  /** Count how many tiles are visible at a given zoom level */
+  getVisibleTileCount(viewportBounds: Rect, zoom: number): number {
+    return this.getVisibleTiles(viewportBounds, zoom).length;
+  }
+
   getTileStatus(zoom: number, col: number, row: number): string {
     const tree = this.quadTrees.get(zoom);
     if (!tree) return 'no-tree';
