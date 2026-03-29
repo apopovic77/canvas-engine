@@ -51,6 +51,8 @@ export class ForceSimulation<T = any> {
   private blockers: BlockerNode[] = [];
   private edges: EdgeConstraint<T>[] = [];
   private config: Required<ForceSimulationConfig>;
+  /** Nodes attached to RIGID edges — excluded from repulsion & physics update */
+  private rigidNodeIds: Set<string> = new Set();
 
   constructor(config: ForceSimulationConfig = {}) {
     this.config = {
@@ -80,6 +82,13 @@ export class ForceSimulation<T = any> {
    */
   public setEdges(edges: EdgeConstraint<T>[]): void {
     this.edges = edges;
+    // Track which nodes are on rigid edges
+    this.rigidNodeIds.clear();
+    for (const edge of edges) {
+      if (edge.type === 'rigid') {
+        this.rigidNodeIds.add(edge.node.id);
+      }
+    }
   }
 
   /**
@@ -123,19 +132,22 @@ export class ForceSimulation<T = any> {
       }
     }
 
-    // 5. Update physics for all nodes (velocity + position integration)
+    // 5. Update physics for non-rigid nodes (velocity + position integration)
     for (const node of this.nodes) {
-      node.updatePhysics(deltaTime);
+      if (!this.rigidNodeIds.has(node.id)) {
+        node.updatePhysics(deltaTime);
+      }
     }
 
     // 6. Apply RIGID edge constraints AFTER physics — snap to exact distance
-    //    and zero out velocity along the edge to prevent drift
+    //    Zero velocity AND reset accumulated forces to prevent any drift
     for (const edge of this.edges) {
       if (edge.type === 'rigid') {
         edge.applyConstraint();
-        // Kill velocity to prevent the node from drifting away
+        // Kill velocity AND forces to prevent repulsion from pushing node away
         edge.node.velocity.x = 0;
         edge.node.velocity.y = 0;
+        edge.node.resetForces();
       }
     }
   }
@@ -168,11 +180,11 @@ export class ForceSimulation<T = any> {
         );
 
         // Apply force to nodes that can move (Newton's 3rd law: equal and opposite)
-        // Fixed nodes act as "immovable" force sources - they push others but don't move themselves
-        if (!nodeA.isFixed) {
+        // Fixed nodes and rigid-edge nodes act as "immovable" — they push others but don't move
+        if (!nodeA.isFixed && !this.rigidNodeIds.has(nodeA.id)) {
           nodeA.applyForce(force);
         }
-        if (!nodeB.isFixed) {
+        if (!nodeB.isFixed && !this.rigidNodeIds.has(nodeB.id)) {
           nodeB.applyForce(Vec.scale(force, -1));
         }
       }
@@ -187,7 +199,7 @@ export class ForceSimulation<T = any> {
 
     for (const blocker of this.blockers) {
       for (const node of this.nodes) {
-        if (node.isFixed) continue;
+        if (node.isFixed || this.rigidNodeIds.has(node.id)) continue;
 
         // Blocker repulsion uses blocker's repulsionStrength
         const force = this.calculateRepulsionForce(
