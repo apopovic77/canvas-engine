@@ -783,10 +783,34 @@ export class ViewportTransform {
     // Use provided scale or keep current
     const scale = targetScale ?? this.targetScale;
 
-    // Calculate offset needed to center world position in viewport
-    // Formula: offset = viewportCenter - (worldPos * scale)
-    const offsetX = this.viewportWidth / 2 - worldX * scale;
-    const offsetY = this.viewportHeight / 2 - worldY * scale;
+    const cx = this.viewportWidth / 2;
+    const cy = this.viewportHeight / 2;
+
+    if (this.rotation !== 0) {
+      // When the canvas is rotated around viewport center, the mapping from
+      // world position to screen position includes the rotation.
+      // Screen position of (worldX, worldY) with offset (ox, oy):
+      //   sx = cx + cos(r) * (worldX * scale + ox - cx) - sin(r) * (worldY * scale + oy - cy)
+      //   sy = cy + sin(r) * (worldX * scale + ox - cx) + cos(r) * (worldY * scale + oy - cy)
+      //
+      // We want sx = cx, sy = cy (centered), so:
+      //   cos(r) * (worldX*s + ox - cx) - sin(r) * (worldY*s + oy - cy) = 0
+      //   sin(r) * (worldX*s + ox - cx) + cos(r) * (worldY*s + oy - cy) = 0
+      //
+      // Let A = worldX*s + ox - cx, B = worldY*s + oy - cy
+      //   cos(r)*A - sin(r)*B = 0  →  A = 0 and B = 0 (only solution for non-degenerate rotation matrix)
+      // So: ox = cx - worldX*s, oy = cy - worldY*s — same formula!
+      // BUT: this only works if rotation is applied around viewport center AFTER offset.
+      //
+      // The render pipeline does: translate(cx,cy) → rotate(r) → translate(-cx,-cy) → then draw at (worldX*scale + offsetX, worldY*scale + offsetY)
+      // So screen pos = rotateAroundCenter(worldX*s + ox, worldY*s + oy)
+      // For that to equal (cx, cy): the pre-rotation position must be (cx, cy)
+      // → worldX*s + ox = cx, worldY*s + oy = cy → ox = cx - worldX*s, oy = cy - worldY*s ✓
+    }
+
+    // Formula works for any rotation because rotation is around viewport center
+    const offsetX = cx - worldX * scale;
+    const offsetY = cy - worldY * scale;
 
     // Set targets (smooth interpolation will handle the animation)
     this.targetScale = scale;
