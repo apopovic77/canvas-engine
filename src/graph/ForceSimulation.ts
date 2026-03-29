@@ -51,8 +51,6 @@ export class ForceSimulation<T = any> {
   private blockers: BlockerNode[] = [];
   private edges: EdgeConstraint<T>[] = [];
   private config: Required<ForceSimulationConfig>;
-  /** Nodes attached to RIGID edges — excluded from repulsion & physics update */
-  private rigidNodeIds: Set<string> = new Set();
 
   constructor(config: ForceSimulationConfig = {}) {
     this.config = {
@@ -82,13 +80,6 @@ export class ForceSimulation<T = any> {
    */
   public setEdges(edges: EdgeConstraint<T>[]): void {
     this.edges = edges;
-    // Track which nodes are on rigid edges
-    this.rigidNodeIds.clear();
-    for (const edge of edges) {
-      if (edge.type === 'rigid') {
-        this.rigidNodeIds.add(edge.node.id);
-      }
-    }
   }
 
   /**
@@ -132,22 +123,33 @@ export class ForceSimulation<T = any> {
       }
     }
 
-    // 5. Update physics for non-rigid nodes (velocity + position integration)
+    // 5. Update physics for all nodes (velocity + position integration)
     for (const node of this.nodes) {
-      if (!this.rigidNodeIds.has(node.id)) {
-        node.updatePhysics(deltaTime);
-      }
+      node.updatePhysics(deltaTime);
     }
 
     // 6. Apply RIGID edge constraints AFTER physics — snap to exact distance
-    //    Zero velocity AND reset accumulated forces to prevent any drift
+    //    Preserve tangential velocity (orbital motion), kill radial velocity
     for (const edge of this.edges) {
       if (edge.type === 'rigid') {
+        // Snap position to exact distance from pin (applyConstraint does this)
         edge.applyConstraint();
-        // Kill velocity AND forces to prevent repulsion from pushing node away
-        edge.node.velocity.x = 0;
-        edge.node.velocity.y = 0;
-        edge.node.resetForces();
+
+        // Remove radial velocity component, keep tangential (allows orbiting)
+        const pinPos = edge.pin.getPosition();
+        const dx = edge.node.position.x - pinPos.x;
+        const dy = edge.node.position.y - pinPos.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > 0.001) {
+          // Radial unit vector (from pin to node)
+          const rx = dx / dist;
+          const ry = dy / dist;
+          // Project velocity onto radial direction
+          const radialSpeed = edge.node.velocity.x * rx + edge.node.velocity.y * ry;
+          // Subtract radial component — only tangential remains
+          edge.node.velocity.x -= radialSpeed * rx;
+          edge.node.velocity.y -= radialSpeed * ry;
+        }
       }
     }
   }
@@ -180,11 +182,11 @@ export class ForceSimulation<T = any> {
         );
 
         // Apply force to nodes that can move (Newton's 3rd law: equal and opposite)
-        // Fixed nodes and rigid-edge nodes act as "immovable" — they push others but don't move
-        if (!nodeA.isFixed && !this.rigidNodeIds.has(nodeA.id)) {
+        // Fixed nodes act as "immovable" force sources - they push others but don't move themselves
+        if (!nodeA.isFixed) {
           nodeA.applyForce(force);
         }
-        if (!nodeB.isFixed && !this.rigidNodeIds.has(nodeB.id)) {
+        if (!nodeB.isFixed) {
           nodeB.applyForce(Vec.scale(force, -1));
         }
       }
@@ -199,7 +201,7 @@ export class ForceSimulation<T = any> {
 
     for (const blocker of this.blockers) {
       for (const node of this.nodes) {
-        if (node.isFixed || this.rigidNodeIds.has(node.id)) continue;
+        if (node.isFixed) continue;
 
         // Blocker repulsion uses blocker's repulsionStrength
         const force = this.calculateRepulsionForce(
