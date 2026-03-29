@@ -353,19 +353,41 @@ export class ForceGraphManager<T = any> {
     ctx.translate(viewport.offset.x, viewport.offset.y);
     ctx.scale(viewport.scale, viewport.scale);
 
-    // Render edges first (background)
+    // Viewport culling bounds (in world coordinates)
+    const canvasW = ctx.canvas.width;
+    const canvasH = ctx.canvas.height;
+    const cullMargin = 200; // generous margin for labels extending beyond node position
+    const worldMinX = (-viewport.offset.x - cullMargin) / viewport.scale;
+    const worldMinY = (-viewport.offset.y - cullMargin) / viewport.scale;
+    const worldMaxX = (canvasW - viewport.offset.x + cullMargin) / viewport.scale;
+    const worldMaxY = (canvasH - viewport.offset.y + cullMargin) / viewport.scale;
+
+    const isVisible = (x: number, y: number) =>
+      x >= worldMinX && x <= worldMaxX && y >= worldMinY && y <= worldMaxY;
+
+    // Render edges first (background) — cull by either endpoint
     for (const edge of this.edges.values()) {
-      this.edgeView.render(edge, context);
+      const np = edge.node.position;
+      const pp = edge.pin.position;
+      if (isVisible(np.x, np.y) || isVisible(pp.x, pp.y)) {
+        this.edgeView.render(edge, context);
+      }
     }
 
-    // Render pins
+    // Render pins — cull by position
     for (const pin of this.pins.values()) {
-      this.pinView.render(pin, context);
+      const pp = pin.position;
+      if (isVisible(pp.x, pp.y)) {
+        this.pinView.render(pin, context);
+      }
     }
 
-    // Render nodes (foreground)
+    // Render nodes (foreground) — cull by position
     for (const node of this.nodes.values()) {
-      this.nodeView.render(node, context);
+      const np = node.position;
+      if (isVisible(np.x, np.y)) {
+        this.nodeView.render(node, context);
+      }
     }
 
     // Note: Blockers are not rendered (they're invisible)
