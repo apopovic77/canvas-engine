@@ -85,6 +85,9 @@ export class TileMapRenderer {
   private readonly fadeInDuration: number;
   private readonly debug: boolean;
 
+  /** When true, tiles are not rendered (vector/overlay-only mode) */
+  public tilesHidden: boolean = false;
+
   // Tile fade-in animations
   private readonly tileOpacities: Map<string, TileOpacity> = new Map();
 
@@ -448,8 +451,10 @@ export class TileMapRenderer {
       ctx.translate(-cx, -cy);
     }
 
-    // Render tiles
-    this.renderTiles();
+    // Render tiles (skip if hidden — vector mode)
+    if (!this.tilesHidden) {
+      this.renderTiles();
+    }
 
     // Pre-layer render callback (SVG overlays, etc. - rendered BEFORE labels)
     if (this.preLayerRenderCallback) {
