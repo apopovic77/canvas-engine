@@ -116,12 +116,27 @@ export class ForceSimulation<T = any> {
     // 3. Calculate blocker-node repulsion
     this.calculateBlockerRepulsion();
 
-    // 4. Apply edge constraints
-    this.applyEdgeConstraints();
+    // 4. Apply SPRING edge constraints (add forces before physics update)
+    for (const edge of this.edges) {
+      if (edge.type === 'spring') {
+        edge.applyConstraint();
+      }
+    }
 
-    // 5. Update physics for all nodes
+    // 5. Update physics for all nodes (velocity + position integration)
     for (const node of this.nodes) {
       node.updatePhysics(deltaTime);
+    }
+
+    // 6. Apply RIGID edge constraints AFTER physics — snap to exact distance
+    //    and zero out velocity along the edge to prevent drift
+    for (const edge of this.edges) {
+      if (edge.type === 'rigid') {
+        edge.applyConstraint();
+        // Kill velocity to prevent the node from drifting away
+        edge.node.velocity.x = 0;
+        edge.node.velocity.y = 0;
+      }
     }
   }
 
