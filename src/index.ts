@@ -22,6 +22,25 @@ export type { ILayouter } from './layout/LayoutEngine';
 export { DayStackLayouter } from './layout/DayStackLayouter';
 export type { DayStackLayoutConfig, DayAxisLabel } from './layout/DayStackLayouter';
 
+// Text-domain (Phase 5a prep — skeleton, not yet runtime-wired)
+export { FreeCanvasLayouter } from './layout/FreeCanvasLayouter';
+export type { FreeCanvasLayouterOptions } from './layout/FreeCanvasLayouter';
+export { EdgeRenderer } from './render/EdgeRenderer';
+export type { EdgeRendererOptions, EdgeRenderStyle } from './render/EdgeRenderer';
+export { EdgeState, EdgeStatePool } from './render/EdgeState';
+export { CardFrameRenderer } from './render/CardFrameRenderer';
+export type { CardFrameRendererOptions } from './render/CardFrameRenderer';
+export { CardFrameState, CardFrameStatePool } from './render/CardFrameState';
+export { textBlockId } from './domain/TextBlock';
+export type {
+  TextBlock,
+  TextBlockAuthor,
+  CanvasMeta,
+  BlockType,
+  BlockEdge,
+  BlockEdgeType,
+} from './domain/TextBlock';
+
 // Components
 export { AppPreloaderWrapper } from './components/AppPreloaderWrapper';
 
