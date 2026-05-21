@@ -93,10 +93,15 @@ export class EdgeRenderer {
   /**
    * Draw all edges between the given nodes onto the canvas context.
    *
-   * Nodes are indexed by their block_id (or paragraph_index fallback —
-   * same key as textBlockId() produces). Edges referencing missing
-   * nodes are silently skipped (e.g. cross-doc edges from a future
-   * federation-wide field_map).
+   * Coordinate space: world-space. Caller must apply the
+   * `ViewportTransform` to `ctx` BEFORE calling render(). All
+   * `LayoutNode` positions and the Bezier curves are computed in
+   * world coordinates; the viewport transform handles pan/zoom.
+   *
+   * Nodes are indexed via `textBlockId()` (block_id or `_paragraph_N`
+   * fallback). Edges referencing missing nodes are silently skipped
+   * (e.g. cross-doc edges from a future federation-wide field_map,
+   * or edges to as-yet-unstamped paragraphs).
    *
    * Call order in the CanvasRenderer frame:
    *   1. EdgeRenderer.render() — edges first, below cards
@@ -126,6 +131,14 @@ export class EdgeRenderer {
     }
   }
 
+  /**
+   * `_viewport` is intentionally unused: callers are expected to apply
+   * the `ViewportTransform` to the canvas context BEFORE calling
+   * render() / drawEdge(). All coordinates here are world-space, not
+   * screen-space. The parameter remains in the signature so a future
+   * screen-space variant can be added without breaking callers; if we
+   * settle on world-space permanently, the parameter can be removed.
+   */
   private drawEdge(
     ctx: CanvasRenderingContext2D,
     from: LayoutNode<TextBlock>,

@@ -37,6 +37,23 @@ So:
   / TipTap NodeView. `pointer-events: auto` only inside the card
   rect so edges stay pickable in the gaps.
 
+### Overlay strategy at scale (per ArkturianCodex' review)
+
+Do NOT mount 1000 live-editable TipTap NodeViews. The DOM overlay
+must implement a two-tier render:
+
+- **Static DOM cards** for blocks inside the visible viewport — plain
+  HTML elements with the rendered text (no ProseMirror editor instance,
+  no decorations, no selection plumbing). Cheap to mount and unmount.
+- **Live TipTap editor** only for the currently selected / focused
+  block (or a small ring of N around it for fluid hand-off). The
+  selected block "upgrades" from static to editable on click; on blur
+  it downgrades back to static.
+
+Same CRDT data underneath — the editor binds to the Yjs doc only when
+mounted. Viewport-Culling on the static layer is mandatory at scale
+(1000+ blocks; 10k+ definitely).
+
 The viewport transform is the shared coordinate system. As the user
 pans/zooms the canvas, the DOM overlay applies the inverse-or-equiv
 transform to its children so the text stays glued to the canvas
@@ -90,6 +107,15 @@ sync ticks and animations resume from the current frame instead of
 restarting. This matches the Product-domain Canvas's animation model
 exactly — same engine philosophy, different domain.
 
+### Pool sync timing
+
+`pool.sync(items, idOf)` is data-driven, NOT frame-driven. Call it
+when topology changes (a block was added/removed, an edge was
+created/deleted), not every rAF. The render loop only reads `.value`
+from the pooled `InterpolatedProperty`s — that read is constant-time
+and lockstep with rAF naturally. Conflating sync with render would
+recreate state every frame and defeat the persistent-pool design.
+
 ## What this skeleton is NOT
 
 - Not yet wired into `CanvasRenderer.render()`. The render loop
@@ -115,6 +141,26 @@ in `content-app` which add the `block_id`/`block_type` paragraph
 attrs and per-paragraph SalienceOverlay cues. When Phase 5a goes
 runtime, it consumes those server-stamped attrs and the in-progress
 `canvas_meta` extension.
+
+## Render-pass composition (per ArkturianCodex' review)
+
+The skeleton intentionally does NOT introduce a generic
+`DomainRenderer<T>` to host the edges → frames → overlay pipeline.
+The existing `CanvasRenderer<T>` is, despite its generic `T`, in
+practice Product/Retail-specific; a second generic renderer would
+crystallize the wrong abstraction.
+
+When Phase 5a goes runtime, the right move is a `TextCanvasRenderer`
+(or `TextCanvasLayer`) — a composition facade that owns the three
+passes plus the shared viewport + hit model:
+
+  - `EdgeRenderer` canvas pass
+  - `CardFrameRenderer` canvas pass
+  - `TextBlockOverlay` DOM/React pass
+
+If, after both domains run for a while, genuine repetition with the
+Product domain emerges, a small `CanvasPass` interface can be
+extracted then. Not before.
 
 ## Next steps (not part of this skeleton)
 
