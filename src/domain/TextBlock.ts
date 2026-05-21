@@ -64,12 +64,19 @@ export interface TextBlock {
   paragraph_index: number
   block_type: BlockType
   author: TextBlockAuthor
-  /** Short slice of the text — first ~100 chars, plain. Full text is
-   *  fetched by the DOM overlay layer from the CRDT, not held here. */
+  /** Short slice of the text — first ~100 chars, plain. Lives here
+   *  (rather than only in the CRDT / DOM overlay) so the canvas can
+   *  render search-results, hover-tooltips, and small preview cards
+   *  WITHOUT triggering a CRDT round-trip per block. The DOM overlay
+   *  still owns the full editable text — this is a fast path for
+   *  canvas-side ephemeral UI. */
   text_preview: string
   char_count: number
   /** Slug of the heading that introduces this block, or null for
-   *  pre-heading blocks. Used by section-grouping layouters. */
+   *  pre-heading blocks. Format matches `field_map`'s `section` nodes
+   *  (`section:<heading-slug>`), so canvas-side grouping can join
+   *  directly against the field_map response without a translation
+   *  step. Used by section-grouping layouters. */
   in_section_id: string | null
   /** Position + size on the canvas. Null when the doc has not yet
    *  received canvas-meta from the server — the layouter is expected
@@ -81,25 +88,50 @@ export interface TextBlock {
  * Stable identity helper for use with `LayoutEngine.sync(items, idOf)`.
  * Prefer the server-assigned block_id; fall back to a paragraph_index-
  * derived key so a brand-new paragraph (not yet committed) still has
- * a stable id within the session.
+ * a key within the session.
+ *
+ * The fallback key uses `_paragraph_<idx>` instead of `paragraph:<idx>`
+ * — the colon would conflict with CSS pseudo-class syntax in the DOM
+ * overlay's `[data-block-id="..."]` selectors, and a leading underscore
+ * makes the transient nature visually obvious next to UUID-shaped real
+ * block_ids.
+ *
+ * IMPORTANT: the fallback identity is only stable for the lifetime of
+ * the session AND only until a paragraph is inserted in front of this
+ * one (which shifts every following paragraph_index). Treat fallback
+ * keys as ephemeral — once the server stamps a real block_id, swap to
+ * it on the next sync tick (LayoutEngine's pool will rebuild the
+ * affected nodes, which is acceptable since fallback-keyed nodes have
+ * not yet held canvas_meta from the server).
  */
 export function textBlockId(block: TextBlock): string {
-  return block.block_id ?? `paragraph:${block.paragraph_index}`
+  return block.block_id ?? `_paragraph_${block.paragraph_index}`
 }
 
 /**
  * Edge between two TextBlocks. Mirrors `block_edges` on the server
  * (Content's Phase 4.1/4.2 — BlockEdge SQLAlchemy model + REST
- * endpoints, 5 edge_types). The canvas-side renders these as Bezier
- * connections; see EdgeRenderer.
+ * endpoints). Five edge_types are authoritative per Server-Spec
+ * Post #795 + the live CHECK constraint:
+ *
+ *   edge_type IN ('replies_to', 'contradicts', 'extends',
+ *                 'references', 'synthesizes')
+ *
+ * The canvas-side renders these as Bezier connections; see
+ * EdgeRenderer.
+ *
+ * NOTE: this set differs intentionally from the brainstorm list in
+ * Post #777 Z 376-381 (`responds_to/supports/summarizes/needs_review/
+ * belongs_to`). That was Codex' MVP brainstorm; the server-side
+ * vocabulary settled differently during Phase 4 implementation.
+ * Always mirror the server CHECK constraint here.
  */
 export type BlockEdgeType =
-  | 'responds_to'
+  | 'replies_to'
   | 'contradicts'
-  | 'supports'
-  | 'summarizes'
-  | 'needs_review'
-  | 'belongs_to'
+  | 'extends'
+  | 'references'
+  | 'synthesizes'
 
 export interface BlockEdge {
   edge_id: string

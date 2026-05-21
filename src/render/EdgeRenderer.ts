@@ -1,6 +1,7 @@
 import type { LayoutNode } from '../layout/LayoutNode'
 import type { ViewportTransform } from '../utils/ViewportTransform'
 import type { BlockEdge, BlockEdgeType, TextBlock } from '../domain/TextBlock'
+import { textBlockId } from '../domain/TextBlock'
 import type { EdgeStatePool } from './EdgeState'
 
 /**
@@ -44,26 +45,37 @@ export interface EdgeRenderStyle {
   arrowSize?: number
 }
 
+// Five edge_types, server-authoritative (Spec #795 + live CHECK
+// constraint). Styles are first-draft visual semantics — strong cues
+// for the most consequential relations (contradicts, synthesizes),
+// neutral for routine flow (replies_to, extends), faint for soft
+// pointers (references).
 const DEFAULT_EDGE_STYLES: Record<BlockEdgeType, EdgeRenderStyle> = {
-  responds_to: { stroke: 'rgba(80, 120, 200, 0.7)', lineWidth: 1.5, arrowSize: 8 },
-  supports: { stroke: 'rgba(80, 180, 120, 0.7)', lineWidth: 2, arrowSize: 8 },
+  replies_to: {
+    stroke: 'rgba(80, 120, 200, 0.7)',
+    lineWidth: 1.5,
+    arrowSize: 8,
+  },
   contradicts: {
-    stroke: 'rgba(220, 90, 90, 0.75)',
+    stroke: 'rgba(220, 90, 90, 0.8)',
     lineWidth: 2,
     lineDash: [6, 4],
     arrowSize: 9,
   },
-  summarizes: { stroke: 'rgba(170, 100, 220, 0.7)', lineWidth: 2.5, arrowSize: 10 },
-  needs_review: {
-    stroke: 'rgba(255, 165, 60, 0.75)',
+  extends: {
+    stroke: 'rgba(110, 130, 130, 0.7)',
     lineWidth: 2,
-    lineDash: [4, 4],
     arrowSize: 8,
   },
-  belongs_to: {
-    stroke: 'rgba(140, 140, 140, 0.55)',
+  references: {
+    stroke: 'rgba(160, 160, 160, 0.55)',
     lineWidth: 1,
     lineDash: [2, 3],
+  },
+  synthesizes: {
+    stroke: 'rgba(170, 100, 220, 0.8)',
+    lineWidth: 2.5,
+    arrowSize: 10,
   },
 }
 
@@ -98,11 +110,12 @@ export class EdgeRenderer {
     viewport: ViewportTransform,
     states?: EdgeStatePool,
   ): void {
+    // Use the same identity helper as LayoutEngine.sync — both must
+    // agree on the fallback key shape (no colons; safe for CSS
+    // selector matching in the DOM overlay).
     const byId = new Map<string, LayoutNode<TextBlock>>()
     for (const n of nodes) {
-      const block = n.data
-      const key = block.block_id ?? `paragraph:${block.paragraph_index}`
-      byId.set(key, n)
+      byId.set(textBlockId(n.data), n)
     }
 
     for (const edge of edges) {

@@ -49,7 +49,9 @@ pattern; it's the proven path.
   `CanvasMeta`, `BlockType`, `BlockEdgeType`). Mirrors what the
   server stamps on paragraph-attrs (`block_id`, `block_type`,
   `author_*`) plus the planned `canvas_meta` extension and Content's
-  Phase 4.1/4.2 `BlockEdge` model.
+  Phase 4.1/4.2 `BlockEdge` model with **five** server-authoritative
+  edge_types from Post #795 + live CHECK constraint (`replies_to`,
+  `contradicts`, `extends`, `references`, `synthesizes`).
 - `layout/FreeCanvasLayouter.ts` — first ILayouter<TextBlock>. If a
   block has `canvas_meta`, snap to it; otherwise stagger as initial
   layout. Matches Codex' MVP cut in Post #777 Z 365-404 (Cards →
@@ -57,10 +59,10 @@ pattern; it's the proven path.
   `LayoutNode<TextBlock>`'s built-in InterpolatedProperty pool so card
   movement animates by default.
 - `render/EdgeRenderer.ts` — Bezier connections with per-edge-type
-  styling (default styles for the six `block_edges` edge_types from
-  Phase 4). Reads animated opacity + thickness from an optional
-  `EdgeStatePool` so new edges fade in, removed edges fade out, and
-  emphasis ticks morph instead of popping.
+  styling (default styles for the five server-authoritative
+  edge_types from Phase 4). Reads animated opacity + thickness from
+  an optional `EdgeStatePool` so new edges fade in, removed edges
+  fade out, and emphasis ticks morph instead of popping.
 - `render/EdgeState.ts` — per-edge `EdgeState` carrying `opacity` and
   `thickness` as `InterpolatedProperty<number>`, plus an `EdgeStatePool`
   that pools them by `edge_id` (parallel to `LayoutEngine`'s LayoutNode
