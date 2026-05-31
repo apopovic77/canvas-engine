@@ -492,11 +492,27 @@ export class TileMapRenderer {
     // Sort tiles by zoom (lower zoom first for proper layering)
     tiles.sort((a, b) => a.zoom - b.zoom);
 
-    // Check if ALL visible target-zoom tiles are loaded
-    // If yes, skip fallback-up tiles (they cause aliasing when downscaled)
+    // Determine when it's safe to drop the fallback layers that prop up the
+    // viewport during a zoom transition.
+    //
+    // The naive condition is "all target tiles have state='loaded'", but that
+    // fires the instant the LAST byte arrives — while every target tile is
+    // still mid-way through its 0→1 opacity fade-in (fadeInDuration, default
+    // 200 ms). If we drop fallback-up tiles right then, the user sees the new
+    // target at ~50% opacity with NO fallback behind it = the visible blink /
+    // dim flash the user reported, especially on zoom-out where fallback-up
+    // is capped at +2 levels and goes away abruptly.
+    //
+    // Fix: require all target tiles to also be (mostly) FADED IN before
+    // dismissing the fallbacks. Threshold 0.95 keeps the fallback for the
+    // last few ms of the interpolation — invisible to the user, but it
+    // guarantees coverage doesn't drop below 100% during the swap.
+    const FADE_DROP_THRESHOLD = 0.95;
     const targetTiles = tiles.filter(t => t.zoom === zoom);
     const visibleTargetTiles = this.tileManager.getVisibleTileCount(viewportBounds, zoom);
     const allTargetLoaded = targetTiles.length >= visibleTargetTiles;
+    const allTargetFadedIn = allTargetLoaded
+      && targetTiles.every(t => this.getTileOpacity(t) >= FADE_DROP_THRESHOLD);
 
     // High-quality downscaling
     this.ctx.imageSmoothingEnabled = true;
@@ -505,9 +521,11 @@ export class TileMapRenderer {
     for (const tile of tiles) {
       if (!tile.image) continue;
 
-      // Skip fallback-up tiles when all target tiles are loaded
-      // They cause aliasing/grain when higher-res tiles are downscaled to tiny screen areas
-      if (tile.zoom > zoom && allTargetLoaded) continue;
+      // Skip fallback-up tiles only once the new target layer is fully faded
+      // in (not just "loaded"). Higher-res fallbacks cause aliasing when
+      // downscaled to small screen areas, so we DO want to drop them — just
+      // not before the target has finished its fade-in.
+      if (tile.zoom > zoom && allTargetFadedIn) continue;
 
       const opacity = this.getTileOpacity(tile);
       if (opacity <= 0) continue;
