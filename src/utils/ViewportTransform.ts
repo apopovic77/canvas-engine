@@ -260,21 +260,47 @@ export class ViewportTransform {
     const scaledWidth = this.contentBounds.width * this.targetScale;
     const scaledHeight = this.contentBounds.height * this.targetScale;
 
-    // Content smaller than viewport? → Center it
-    const shouldCenterX = scaledWidth < this.viewportWidth;
-    const shouldCenterY = scaledHeight < this.viewportHeight;
+    // Rotation-aware effective viewport size: when the map is rotated, the
+    // axis-aligned screen rectangle becomes a rotated rectangle in content
+    // space. To prevent empty void from showing at the visible corners, the
+    // pan-bounds must use the AABB of this rotated rect — not the raw
+    // viewport width/height.
+    //
+    //   effW = |cos θ| · vW + |sin θ| · vH
+    //   effH = |sin θ| · vW + |cos θ| · vH
+    //
+    // At θ=0 this reduces to (vW, vH) — old behaviour. At θ=45° both
+    // dimensions become (vW + vH) / √2 = the diagonal — the tightest case.
+    const cosA = Math.abs(Math.cos(this.rotation));
+    const sinA = Math.abs(Math.sin(this.rotation));
+    const effViewportWidth  = this.viewportWidth  * cosA + this.viewportHeight * sinA;
+    const effViewportHeight = this.viewportWidth  * sinA + this.viewportHeight * cosA;
 
-    // Center content accounting for its origin (minX, minY)
+    // Content smaller than the (effective) viewport? → Centre it.
+    const shouldCenterX = scaledWidth < effViewportWidth;
+    const shouldCenterY = scaledHeight < effViewportHeight;
+
+    // Centre content accounting for its origin (minX, minY).
     const centerX = (this.viewportWidth - scaledWidth) / 2 - this.contentBounds.minX * this.targetScale;
     const centerY = (this.viewportHeight - scaledHeight) / 2 - this.contentBounds.minY * this.targetScale;
 
-    // Bounds: account for extended content bounds (e.g., Hero Mode allows edge products to center)
-    // If minX < 0, content was extended to the left → allow panning right (positive maxOffsetX)
-    // If content extends beyond viewport, allow panning left (negative minOffsetX)
-    const maxOffsetX = shouldCenterX ? centerX : -this.contentBounds.minX * this.targetScale;
-    const minOffsetX = shouldCenterX ? centerX : this.viewportWidth - scaledWidth - this.contentBounds.minX * this.targetScale;
-    const maxOffsetY = shouldCenterY ? centerY : -this.contentBounds.minY * this.targetScale;
-    const minOffsetY = shouldCenterY ? centerY : this.viewportHeight - scaledHeight - this.contentBounds.minY * this.targetScale;
+    // Pan-bounds derived from the constraint "viewport-AABB-in-content-space
+    // ⊆ contentBounds". The viewport AABB is centred at the screen midpoint,
+    // so the constraint translates into:
+    //   maxOffsetX = (vW/2 − effW/2) − minX · scale
+    //   minOffsetX = (vW/2 + effW/2) − (minX + width) · scale
+    // Mirroring for Y. At θ=0, this collapses to the original formula.
+    const halfEffW = effViewportWidth / 2;
+    const halfEffH = effViewportHeight / 2;
+    const vpCx = this.viewportWidth / 2;
+    const vpCy = this.viewportHeight / 2;
+    const maxX = this.contentBounds.minX + this.contentBounds.width;
+    const maxY = this.contentBounds.minY + this.contentBounds.height;
+
+    const maxOffsetX = shouldCenterX ? centerX : (vpCx - halfEffW) - this.contentBounds.minX * this.targetScale;
+    const minOffsetX = shouldCenterX ? centerX : (vpCx + halfEffW) - maxX * this.targetScale;
+    const maxOffsetY = shouldCenterY ? centerY : (vpCy - halfEffH) - this.contentBounds.minY * this.targetScale;
+    const minOffsetY = shouldCenterY ? centerY : (vpCy + halfEffH) - maxY * this.targetScale;
 
     return {
       minOffsetX,

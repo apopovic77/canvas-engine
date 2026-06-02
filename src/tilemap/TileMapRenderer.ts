@@ -616,11 +616,15 @@ export class TileMapRenderer {
 
     // Draw debug panel
     ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
-    ctx.fillRect(10, 10, 320, 180);
+    // Position below the host app's site header (typical SiteNav is ~56-64 px
+    // tall; offsetting by 80 keeps the panel below it across day/night skins).
+    const PANEL_X = 10;
+    const PANEL_Y = 80;
+    ctx.fillRect(PANEL_X, PANEL_Y, 320, 180);
 
     ctx.fillStyle = '#fff';
     ctx.font = '12px monospace';
-    let y = 28;
+    let y = PANEL_Y + 18;
     const lineHeight = 16;
 
     ctx.fillText(`Zoom Level: ${zoom} / ${this.tileManager.getMaxZoom()}`, 20, y); y += lineHeight;
