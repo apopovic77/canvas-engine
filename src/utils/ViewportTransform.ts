@@ -181,9 +181,13 @@ export class ViewportTransform {
     // Use the smaller scale to ensure everything fits
     this.fitToContentScale = Math.min(scaleX, scaleY); // No padding, exact fit
 
-    // Max zoom: Allow zooming to 50× the fit-to-content scale
-    // This allows viewing a single item 50× larger than in overview
-    this.maxScale = this.fitToContentScale * 50;
+    // Max zoom: Allow zooming to 50× the fit-to-content scale, but never below
+    // an absolute floor of 2.0. On narrow viewports (e.g. mobile 390px wide)
+    // fitToContentScale is tiny, so 50× still lands below typical working zooms
+    // (e.g. GPS_ZOOM 0.7375) — which silently clamped targetScale and pushed the
+    // whole viewport off-centre, making POIs untappable. The floor keeps normal
+    // zoom levels reachable on every viewport while preserving deep-zoom on wide ones.
+    this.maxScale = Math.max(2.0, this.fitToContentScale * 50);
   }
 
   /**
