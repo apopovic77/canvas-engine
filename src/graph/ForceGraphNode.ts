@@ -109,6 +109,17 @@ export class ForceGraphNode<T = any> {
     const damping = 0.9;
     this.velocity = Vec.scale(this.velocity, damping);
 
+    // Snap velocity to zero if effectively still. Symmetric configurations
+    // (e.g. three repulsing nodes locked in a triangle) can stay just above
+    // the kinetic-energy settle threshold indefinitely — each frame the
+    // damped velocity pushes the node into a new force imbalance that
+    // re-injects the lost energy, so the visual effect is endless gentle
+    // bouncing. Hard-clamping micro-velocities below 0.01 px/s breaks that
+    // feedback loop without affecting any motion users would perceive.
+    if (this.velocity.x * this.velocity.x + this.velocity.y * this.velocity.y < 0.0001) {
+      this.velocity = new Vector2(0, 0);
+    }
+
     // p = p + v*dt
     this.position = Vec.add(this.position, Vec.scale(this.velocity, deltaTime));
 
