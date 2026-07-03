@@ -150,6 +150,17 @@ export class ForceSimulation<T = any> {
           edge.node.velocity.x -= radialSpeed * rx;
           edge.node.velocity.y -= radialSpeed * ry;
         }
+
+        // Rendering reads the INTERPOLATED visualPosition (a computed
+        // getter lerping start→target) — it cuts the orbital arc as a
+        // chord while catching up and overshoots radially while settling,
+        // so the drawn "rod" visibly breathed shorter/longer although the
+        // physics length was exact. Rigid nodes therefore skip the visual
+        // smoothing entirely: the sub-stepped, damped simulation is already
+        // smooth, and exact length beats an extra lerp.
+        edge.node.visualPosition.setImmediate(
+          new Vector2(edge.node.position.x, edge.node.position.y)
+        );
       }
     }
   }
