@@ -136,6 +136,8 @@ export { PinPoint } from './graph/PinPoint';
 export { EdgeConstraint, EdgeType } from './graph/EdgeConstraint';
 export { BlockerNode } from './graph/BlockerNode';
 export { ForceSimulation } from './graph/ForceSimulation';
+export { OrbitalGraphManager } from './graph/OrbitalGraphManager';
+export type { IGraphPhysics } from './graph/IGraphPhysics';
 export type { ForceSimulationConfig } from './graph/ForceSimulation';
 
 export type { INodeView, IPinView, IEdgeView, GraphRenderContext } from './graph/IGraphView';

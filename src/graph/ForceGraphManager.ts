@@ -1,4 +1,5 @@
 import { Vector2 } from 'arkturian-typescript-utils';
+import type { IGraphPhysics } from './IGraphPhysics';
 import { ForceGraphNode } from './ForceGraphNode';
 import { PinPoint } from './PinPoint';
 import { EdgeConstraint, EdgeType } from './EdgeConstraint';
@@ -74,7 +75,7 @@ export interface ForceGraphConfig<T = any> {
  * manager.render(ctx, viewport);
  * ```
  */
-export class ForceGraphManager<T = any> {
+export class ForceGraphManager<T = any> implements IGraphPhysics<T> {
   // Collections
   private nodes = new Map<string, ForceGraphNode<T>>();
   private pins = new Map<string, PinPoint>();
