@@ -182,12 +182,15 @@ export class ViewportTransform {
     this.fitToContentScale = Math.min(scaleX, scaleY); // No padding, exact fit
 
     // Max zoom: Allow zooming to 50× the fit-to-content scale, but never below
-    // an absolute floor of 2.0. On narrow viewports (e.g. mobile 390px wide)
+    // an absolute floor. On narrow viewports (e.g. mobile 390px wide)
     // fitToContentScale is tiny, so 50× still lands below typical working zooms
     // (e.g. GPS_ZOOM 0.7375) — which silently clamped targetScale and pushed the
     // whole viewport off-centre, making POIs untappable. The floor keeps normal
-    // zoom levels reachable on every viewport while preserving deep-zoom on wide ones.
-    this.maxScale = Math.max(2.0, this.fitToContentScale * 50);
+    // zoom levels reachable on every viewport while preserving deep-zoom on wide
+    // ones. Floor raised 2.0 → 4.0 (2026-07-04): POI-tap zoom is 3.5 now, and a
+    // desktop 1400px viewport still computed maxScale 1.8×→2.0 — the requested
+    // tap zoom must be reachable on every viewport.
+    this.maxScale = Math.max(4.0, this.fitToContentScale * 50);
   }
 
   /**
@@ -810,8 +813,15 @@ export class ViewportTransform {
    * @param targetScale - Optional scale to animate to (defaults to current scale)
    */
   centerOn(worldX: number, worldY: number, targetScale?: number): void {
-    // Use provided scale or keep current
-    const scale = targetScale ?? this.targetScale;
+    // Use provided scale or keep current — clamped to the allowed zoom range
+    // UP FRONT. The offset below is derived from this scale; if we computed
+    // it from an out-of-range scale, applyRubberBanding() would clamp
+    // targetScale one frame later while the offset stayed sized for the
+    // requested scale — the camera then converges on worldPos × (requested /
+    // clamped), i.e. a completely different world point. (Camera-focus bug
+    // 2026-07-04: POI taps at zoom 3.5 with maxScale 2.0 flew off-target.)
+    const requested = targetScale ?? this.targetScale;
+    const scale = Math.min(this.maxScale, Math.max(this.minScale, requested));
 
     const cx = this.viewportWidth / 2;
     const cy = this.viewportHeight / 2;
