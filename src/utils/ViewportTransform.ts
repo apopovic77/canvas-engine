@@ -28,6 +28,14 @@ export class ViewportTransform {
   private fitToContentScale = 1; // Calculated from content bounds
   public maxScale = 2; // Dynamically calculated: fitToContentScale × 50
 
+  // When false, PROGRAMMATIC camera moves (centerOn, and the per-frame
+  // applyRubberBanding spring) may set a scale OUTSIDE [minScale, maxScale].
+  // User gestures (wheel/pinch) still clamp to those bounds regardless. This
+  // lets a host pin minScale/maxScale as USER-gesture guards without them
+  // swallowing programmatic initial-views or focus zooms (tile-map #315).
+  // Default true = legacy behaviour (every scale set clamped).
+  public clampProgrammaticScale = true;
+
   // Rubber banding config (iOS-style)
   // Separate flags for translation (panning) and scale (zooming) bounds
   private enableRubberBandingTranslation = true; // Controls panning bounds (Rect Bounds mode)
@@ -326,8 +334,12 @@ export class ViewportTransform {
    * Respects enableRubberBandingScale and enableRubberBandingTranslation flags
    */
   private applyRubberBanding(): void {
-    // Clamp scale if scale rubber banding is enabled
-    if (this.enableRubberBandingScale) {
+    // Clamp scale if scale rubber banding is enabled. Skipped when the host
+    // opted out of programmatic clamping (clampProgrammaticScale=false) so a
+    // programmatic centerOn beyond the user bounds is not sprung back every
+    // frame. User gestures stay bounded via the wheel/pinch clamp sites, which
+    // do NOT consult this flag. (tile-map #315)
+    if (this.enableRubberBandingScale && this.clampProgrammaticScale) {
       this.targetScale = Math.max(this.minScale, Math.min(this.maxScale, this.targetScale));
     }
 
@@ -821,7 +833,13 @@ export class ViewportTransform {
     // clamped), i.e. a completely different world point. (Camera-focus bug
     // 2026-07-04: POI taps at zoom 3.5 with maxScale 2.0 flew off-target.)
     const requested = targetScale ?? this.targetScale;
-    const scale = Math.min(this.maxScale, Math.max(this.minScale, requested));
+    // Programmatic focus may exceed the user-gesture bounds when the host opts
+    // out (clampProgrammaticScale=false). We still keep offset+scale consistent
+    // because the offset below is derived from the SAME `scale` we commit — and
+    // applyRubberBanding() honours the same flag, so it won't spring it back.
+    const scale = this.clampProgrammaticScale
+      ? Math.min(this.maxScale, Math.max(this.minScale, requested))
+      : requested;
 
     const cx = this.viewportWidth / 2;
     const cy = this.viewportHeight / 2;
