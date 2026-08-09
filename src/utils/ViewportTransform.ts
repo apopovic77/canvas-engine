@@ -475,29 +475,40 @@ export class ViewportTransform {
 
     // Zoom towards mouse position
     const rect = this.canvas.getBoundingClientRect();
-    let mouseX = e.clientX - rect.left;
-    let mouseY = e.clientY - rect.top;
-
-    // Un-rotate mouse position: offset operates in unrotated space,
-    // but mouse is in rotated screen space
-    if (this.rotation !== 0) {
-      const cx = this.viewportWidth / 2;
-      const cy = this.viewportHeight / 2;
-      const cos = Math.cos(-this.rotation);
-      const sin = Math.sin(-this.rotation);
-      const dx = mouseX - cx;
-      const dy = mouseY - cy;
-      mouseX = dx * cos - dy * sin + cx;
-      mouseY = dx * sin + dy * cos + cy;
-    }
+    const mouse = this.unrotateScreenPoint(e.clientX - rect.left, e.clientY - rect.top);
 
     // Adjust target offset to zoom towards mouse position
     const scaleFactor = newScale / this.targetScale;
-    this.targetOffset.x = mouseX - (mouseX - this.targetOffset.x) * scaleFactor;
-    this.targetOffset.y = mouseY - (mouseY - this.targetOffset.y) * scaleFactor;
+    this.targetOffset.x = mouse.x - (mouse.x - this.targetOffset.x) * scaleFactor;
+    this.targetOffset.y = mouse.y - (mouse.y - this.targetOffset.y) * scaleFactor;
 
     this.targetScale = newScale;
   };
+
+  /**
+   * Un-rotate a screen-space point into the unrotated offset space.
+   *
+   * The offset/scale transform operates in UNROTATED space; the rotation is
+   * applied on top around the viewport center. Any screen coordinate that is
+   * used as a zoom anchor therefore has to be rotated back first — otherwise
+   * the anchor is wrong by exactly the map rotation, and zooming appears to
+   * pull the map sideways toward a point the fingers are not touching.
+   *
+   * This used to live inline in the wheel handler only; pinch-zoom used the
+   * raw midpoint and was broken on rotated maps (the portrait map is rotated
+   * -35°, so EVERY phone pinch hit this) while wheel zoom worked. One shared
+   * helper instead of a second copy, so the two paths cannot drift again.
+   */
+  private unrotateScreenPoint(x: number, y: number): { x: number; y: number } {
+    if (this.rotation === 0) return { x, y };
+    const cx = this.viewportWidth / 2;
+    const cy = this.viewportHeight / 2;
+    const cos = Math.cos(-this.rotation);
+    const sin = Math.sin(-this.rotation);
+    const dx = x - cx;
+    const dy = y - cy;
+    return { x: dx * cos - dy * sin + cx, y: dx * sin + dy * cos + cy };
+  }
   
   private handleMouseDown = (e: MouseEvent) => {
     const rect = this.canvas.getBoundingClientRect();
@@ -677,16 +688,19 @@ export class ViewportTransform {
         newScale = Math.max(this.minScale, Math.min(this.maxScale, newScale));
       }
 
-      // Zoom towards the midpoint between fingers (iOS-style pinch-to-zoom)
+      // Zoom towards the midpoint between fingers (iOS-style pinch-to-zoom).
+      // The midpoint is in ROTATED screen space and must be un-rotated before
+      // it can anchor the offset — same rule as the wheel handler. Using the
+      // raw midpoint zoomed toward a point offset by the map rotation: on the
+      // -35° portrait map the image visibly slid away under the pinch.
       const midX = (touch1.clientX + touch2.clientX) / 2;
       const midY = (touch1.clientY + touch2.clientY) / 2;
       const rect = this.canvas.getBoundingClientRect();
-      const canvasMidX = midX - rect.left;
-      const canvasMidY = midY - rect.top;
+      const anchor = this.unrotateScreenPoint(midX - rect.left, midY - rect.top);
 
       const scaleRatio = newScale / this.targetScale;
-      this.targetOffset.x = canvasMidX - (canvasMidX - this.targetOffset.x) * scaleRatio;
-      this.targetOffset.y = canvasMidY - (canvasMidY - this.targetOffset.y) * scaleRatio;
+      this.targetOffset.x = anchor.x - (anchor.x - this.targetOffset.x) * scaleRatio;
+      this.targetOffset.y = anchor.y - (anchor.y - this.targetOffset.y) * scaleRatio;
       this.targetScale = newScale;
 
       // --- Pan (parallel two-finger movement) ---
