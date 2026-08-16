@@ -45,6 +45,8 @@ export interface Tile {
   loadStartTime?: number;
   /** Priority for loading (lower = higher priority) */
   priority?: number;
+  /** LRU clock stamp of the last visibility query that touched this tile (lazy mode) */
+  lastTouch?: number;
 }
 
 /**
@@ -63,6 +65,10 @@ export interface ZoomLevel {
   width: number;
   /** Total height at this zoom */
   height: number;
+  /** Lazy mode: world-px rects (original coords) where this level has data.
+   *  Cells outside every rect are treated as nonexistent — the mechanism for
+   *  variable-depth pyramids (deep levels only over baked detail areas). */
+  coverage?: Rect[];
 }
 
 /**
@@ -92,6 +98,11 @@ export interface TileManifest {
 
   /** Zoom level configurations */
   zoomLevels: ZoomLevel[];
+
+  /** Materialize tiles on demand instead of instantiating the whole grid in
+   *  the constructor. Required for deep geographic pyramids (millions of
+   *  cells); photographed pyramids stay eager by default. */
+  lazy?: boolean;
 }
 
 /**
@@ -150,6 +161,10 @@ export interface TileManagerConfig {
   loadTimeout?: number;
   /** Retry failed loads (default: 2) */
   retryAttempts?: number;
+  /** Synthesize tile URLs at materialization time (lazy mode; overrides urlPattern) */
+  urlResolver?: (zoom: number, x: number, y: number) => string;
+  /** Lazy mode: resident-tile LRU cap (default: 4096) */
+  maxResidentTiles?: number;
 }
 
 /**

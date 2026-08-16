@@ -2,7 +2,29 @@
  * Tile Manager
  *
  * Manages tile loading, caching, and visibility determination.
- * Coordinates between QuadTree (spatial queries) and TileLoadQueue (loading).
+ *
+ * Two operating modes, selected by the manifest:
+ *
+ * - **Eager** (default, `manifest.lazy` unset): every Tile object of every
+ *   zoom level is instantiated in the constructor and indexed in per-level
+ *   QuadTrees. Right for photographed pyramids (a 54k-px scan is a few
+ *   thousand tiles) and required by legacy consumers that iterate the
+ *   `tiles` map right after construction to rewrite URLs.
+ *
+ * - **Lazy** (`manifest.lazy: true`): tiles are materialized on demand when
+ *   a viewport query first touches their grid cell. A regular grid needs no
+ *   spatial index — visibility is O(1) index math — so deep geographic
+ *   pyramids (a full-region OSM window can exceed 5 million cells) cost
+ *   only what the camera actually looks at. A `maxResidentTiles` LRU cap
+ *   bounds memory on long pans. URL synthesis happens at materialization
+ *   time, either from `urlPattern` or via an injected `urlResolver`
+ *   (see setUrlResolver — the hook OSM-style sources use to map
+ *   window-local z/x/y to global tile-server addresses).
+ *
+ * Lazy levels may carry `coverage` rects (world px): grid cells outside
+ * every rect are treated as nonexistent. That is what makes variable-depth
+ * pyramids possible — a region-wide base with deeper levels only where
+ * deep data was actually baked — without hammering the server with 404s.
  *
  * @module tilemap
  */
@@ -30,14 +52,22 @@ export class TileManager {
   private readonly quadTrees: Map<number, QuadTree<Tile>> = new Map();
   private readonly loadQueue: TileLoadQueue;
   private readonly listeners: TileEventCallback[] = [];
+  private readonly lazy: boolean;
+  private readonly maxResidentTiles: number;
+  private urlResolver: ((zoom: number, x: number, y: number) => string) | null;
 
   private currentZoom: number = 0;
+  /** Monotonic LRU clock — bumped per visibility query, stamped on touched tiles. */
+  private touchClock: number = 0;
 
   /**
    * Create a new TileManager
    */
   constructor(config: TileManagerConfig) {
     this.manifest = config.manifest;
+    this.lazy = config.manifest.lazy === true;
+    this.maxResidentTiles = config.maxResidentTiles ?? 4096;
+    this.urlResolver = config.urlResolver ?? null;
 
     this.loadQueue = new TileLoadQueue(
       config.maxConcurrent ?? 4,
@@ -53,15 +83,16 @@ export class TileManager {
       }
     });
 
-    this.initializeTiles();
+    if (!this.lazy) {
+      this.initializeTiles();
+    }
   }
 
   /**
-   * Initialize all tiles and quadtrees
+   * Eager mode: initialize all tiles and quadtrees up front.
    */
   private initializeTiles(): void {
-    const { zoomLevels, tileSize, baseUrl, format } = this.manifest;
-    const urlPattern = this.manifest.urlPattern || '{baseUrl}/zoom_{zoom}/tile_{x}_{y}.{format}';
+    const { zoomLevels } = this.manifest;
 
     for (const level of zoomLevels) {
       // Create quadtree for this zoom level
@@ -73,47 +104,71 @@ export class TileManager {
         4   // maxItems
       );
 
-      // Create tiles for this zoom level
       for (let y = 0; y < level.rows; y++) {
         for (let x = 0; x < level.cols; x++) {
-          const id = `${level.zoom}_${x}_${y}`;
-
-          // Calculate tile bounds at full resolution
-          const scaleFactor = 1 / level.scale;
-          const tileWorldWidth = tileSize * scaleFactor;
-          const tileWorldHeight = tileSize * scaleFactor;
-
-          const bounds: Rect = {
-            x: x * tileWorldWidth,
-            y: y * tileWorldHeight,
-            width: Math.min(tileWorldWidth, this.manifest.originalSize.width - x * tileWorldWidth),
-            height: Math.min(tileWorldHeight, this.manifest.originalSize.height - y * tileWorldHeight),
-          };
-
-          // Build URL from pattern
-          const url = urlPattern
-            .replace('{baseUrl}', baseUrl)
-            .replace('{zoom}', String(level.zoom))
-            .replace('{x}', String(x))
-            .replace('{y}', String(y))
-            .replace('{format}', format);
-
-          const tile: Tile = {
-            id,
-            zoom: level.zoom,
-            x,
-            y,
-            bounds,
-            url,
-            state: 'pending',
-          };
-
-          this.tiles.set(id, tile);
-          tree.insert(bounds, tile);
+          const tile = this.createTile(level, x, y);
+          this.tiles.set(tile.id, tile);
+          tree.insert(tile.bounds, tile);
         }
       }
 
       this.quadTrees.set(level.zoom, tree);
+    }
+  }
+
+  /**
+   * Build a Tile object for a grid cell (both modes share this).
+   */
+  private createTile(level: ZoomLevel, x: number, y: number): Tile {
+    const { tileSize, baseUrl, format } = this.manifest;
+    const urlPattern = this.manifest.urlPattern || '{baseUrl}/zoom_{zoom}/tile_{x}_{y}.{format}';
+
+    // Calculate tile bounds at full resolution
+    const scaleFactor = 1 / level.scale;
+    const tileWorldWidth = tileSize * scaleFactor;
+    const tileWorldHeight = tileSize * scaleFactor;
+
+    const bounds: Rect = {
+      x: x * tileWorldWidth,
+      y: y * tileWorldHeight,
+      width: Math.min(tileWorldWidth, this.manifest.originalSize.width - x * tileWorldWidth),
+      height: Math.min(tileWorldHeight, this.manifest.originalSize.height - y * tileWorldHeight),
+    };
+
+    const url = this.urlResolver
+      ? this.urlResolver(level.zoom, x, y)
+      : urlPattern
+          .replace('{baseUrl}', baseUrl)
+          .replace('{zoom}', String(level.zoom))
+          .replace('{x}', String(x))
+          .replace('{y}', String(y))
+          .replace('{format}', format);
+
+    return {
+      id: `${level.zoom}_${x}_${y}`,
+      zoom: level.zoom,
+      x,
+      y,
+      bounds,
+      url,
+      state: 'pending',
+    };
+  }
+
+  /**
+   * Inject/replace the URL synthesizer (window-local z/x/y → fetchable URL).
+   *
+   * Also rewrites every already-materialized tile so the call order
+   * "construct renderer → set resolver" stays race-free in both modes.
+   * OSM-style sources use this instead of iterating the tiles map — in lazy
+   * mode there is nothing to iterate at construction time.
+   */
+  setUrlResolver(resolver: (zoom: number, x: number, y: number) => string): void {
+    this.urlResolver = resolver;
+    for (const tile of this.tiles.values()) {
+      if (tile.state === 'pending' || tile.state === 'error') {
+        tile.url = resolver(tile.zoom, tile.x, tile.y);
+      }
     }
   }
 
@@ -169,17 +224,102 @@ export class TileManager {
   /**
    * Get visible tiles for given viewport bounds and zoom
    *
+   * Lazy mode materializes the touched grid cells on the fly.
+   *
    * @param viewportBounds Viewport bounds in world (original image) coordinates
    * @param zoom Zoom level
    * @returns Array of visible tiles
    */
   getVisibleTiles(viewportBounds: Rect, zoom: number): Tile[] {
-    const tree = this.quadTrees.get(zoom);
-    if (!tree) {
+    if (!this.lazy) {
+      const tree = this.quadTrees.get(zoom);
+      if (!tree) {
+        return [];
+      }
+      return tree.query(viewportBounds);
+    }
+    return this.queryLazy(viewportBounds, zoom, true);
+  }
+
+  /**
+   * Lazy grid query. `materialize: false` only returns cells that already
+   * exist — used by render-fallback lookups so painting coarser/finer
+   * stand-ins never allocates tiles the camera did not request.
+   */
+  private queryLazy(viewportBounds: Rect, zoom: number, materialize: boolean): Tile[] {
+    const level = this.manifest.zoomLevels.find(l => l.zoom === zoom);
+    if (!level) {
       return [];
     }
 
-    return tree.query(viewportBounds);
+    const scaleFactor = 1 / level.scale;
+    const tileWorld = this.manifest.tileSize * scaleFactor;
+
+    const x0 = Math.max(0, Math.floor(viewportBounds.x / tileWorld));
+    const y0 = Math.max(0, Math.floor(viewportBounds.y / tileWorld));
+    const x1 = Math.min(level.cols - 1, Math.floor((viewportBounds.x + viewportBounds.width) / tileWorld));
+    const y1 = Math.min(level.rows - 1, Math.floor((viewportBounds.y + viewportBounds.height) / tileWorld));
+    if (x1 < x0 || y1 < y0) {
+      return [];
+    }
+
+    this.touchClock++;
+    const result: Tile[] = [];
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if (level.coverage && !this.cellInCoverage(level, tileWorld, x, y)) {
+          continue;
+        }
+        const id = `${zoom}_${x}_${y}`;
+        let tile = this.tiles.get(id);
+        if (!tile) {
+          if (!materialize) {
+            continue;
+          }
+          tile = this.createTile(level, x, y);
+          this.tiles.set(id, tile);
+        }
+        tile.lastTouch = this.touchClock;
+        result.push(tile);
+      }
+    }
+    return result;
+  }
+
+  /** Does the grid cell intersect at least one coverage rect of its level? */
+  private cellInCoverage(level: ZoomLevel, tileWorld: number, x: number, y: number): boolean {
+    const cx = x * tileWorld;
+    const cy = y * tileWorld;
+    for (const rect of level.coverage!) {
+      if (cx < rect.x + rect.width && cx + tileWorld > rect.x &&
+          cy < rect.y + rect.height && cy + tileWorld > rect.y) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Lazy mode: bound resident tile objects. Evicts the least-recently-seen
+   * tiles that are neither part of the current query round nor loading.
+   */
+  private evictStaleTiles(): void {
+    if (!this.lazy || this.tiles.size <= this.maxResidentTiles) {
+      return;
+    }
+    const candidates: Tile[] = [];
+    for (const tile of this.tiles.values()) {
+      if (tile.state !== 'loading' && (tile.lastTouch ?? 0) < this.touchClock) {
+        candidates.push(tile);
+      }
+    }
+    candidates.sort((a, b) => (a.lastTouch ?? 0) - (b.lastTouch ?? 0));
+    const excess = this.tiles.size - this.maxResidentTiles;
+    for (let i = 0; i < excess && i < candidates.length; i++) {
+      const tile = candidates[i];
+      tile.image = undefined;
+      this.tiles.delete(tile.id);
+    }
   }
 
   /**
@@ -230,6 +370,8 @@ export class TileManager {
       }
     }
 
+    this.evictStaleTiles();
+
     // Process queue
     this.loadQueue.process();
   }
@@ -242,11 +384,23 @@ export class TileManager {
   }
 
   /**
-   * Get all tiles at a zoom level
+   * Get all tiles at a zoom level.
+   *
+   * Lazy mode returns only the tiles materialized so far — enumerating a
+   * full deep level would defeat the point of laziness.
    */
   getTilesAtZoom(zoom: number): Tile[] {
-    const tree = this.quadTrees.get(zoom);
-    return tree ? tree.all() : [];
+    if (!this.lazy) {
+      const tree = this.quadTrees.get(zoom);
+      return tree ? tree.all() : [];
+    }
+    const result: Tile[] = [];
+    for (const tile of this.tiles.values()) {
+      if (tile.zoom === zoom) {
+        result.push(tile);
+      }
+    }
+    return result;
   }
 
   /**
@@ -265,6 +419,9 @@ export class TileManager {
 
   /**
    * Get current loading progress
+   *
+   * Counts the tiles at the current zoom level (in lazy mode that is the
+   * requested working set, not the — potentially millions-large — full grid).
    */
   getProgress(): TileLoadProgress {
     let loaded = 0;
@@ -272,24 +429,18 @@ export class TileManager {
     let errors = 0;
     let total = 0;
 
-    // Count tiles at current zoom
-    const tree = this.quadTrees.get(this.currentZoom);
-    if (tree) {
-      const allTiles = tree.all();
-      total = allTiles.length;
-
-      for (const tile of allTiles) {
-        switch (tile.state) {
-          case 'loaded':
-            loaded++;
-            break;
-          case 'loading':
-            loading++;
-            break;
-          case 'error':
-            errors++;
-            break;
-        }
+    for (const tile of this.getTilesAtZoom(this.currentZoom)) {
+      total++;
+      switch (tile.state) {
+        case 'loaded':
+          loaded++;
+          break;
+        case 'loading':
+          loading++;
+          break;
+        case 'error':
+          errors++;
+          break;
       }
     }
 
@@ -307,8 +458,10 @@ export class TileManager {
     const result: Tile[] = [];
     const addedIds = new Set<string>();
 
-    // Get tiles at requested zoom
-    const requestedTiles = this.getVisibleTiles(viewportBounds, zoom);
+    // Get tiles at requested zoom (materialized by the requestTiles pass)
+    const requestedTiles = this.lazy
+      ? this.queryLazy(viewportBounds, zoom, false)
+      : this.getVisibleTiles(viewportBounds, zoom);
 
     for (const tile of requestedTiles) {
       if (tile.state === 'loaded' && tile.image) {
@@ -318,12 +471,14 @@ export class TileManager {
     }
 
     // ALWAYS add fallback tiles for smooth transitions
-    // The renderer will use them until target tiles are fully faded in
+    // The renderer will use them until target tiles are fully faded in.
+    // Fallback lookups never materialize: they can only paint what exists.
+    const lookup = (bounds: Rect, z: number): Tile[] =>
+      this.lazy ? this.queryLazy(bounds, z, false) : this.getVisibleTiles(bounds, z);
 
     // Fallback DOWN: lower zoom levels (coarser tiles covering larger areas)
     for (let fallbackZoom = zoom - 1; fallbackZoom >= 0; fallbackZoom--) {
-      const fallbackTiles = this.getVisibleTiles(viewportBounds, fallbackZoom);
-      for (const tile of fallbackTiles) {
+      for (const tile of lookup(viewportBounds, fallbackZoom)) {
         if (tile.state === 'loaded' && tile.image && !addedIds.has(tile.id)) {
           result.push(tile);
           addedIds.add(tile.id);
@@ -335,11 +490,10 @@ export class TileManager {
     // These cover the viewport when zooming OUT and lower-res tiles aren't loaded yet.
     // Without this, zooming out causes a flash of empty background.
     // Only check +1 and +2 to avoid rendering hundreds of tiny tiles.
-    const maxZoom = this.quadTrees.size - 1;
+    const maxZoom = this.manifest.zoomLevels.length - 1;
     const maxFallbackUp = Math.min(zoom + 2, maxZoom);
     for (let fallbackZoom = zoom + 1; fallbackZoom <= maxFallbackUp; fallbackZoom++) {
-      const fallbackTiles = this.getVisibleTiles(viewportBounds, fallbackZoom);
-      for (const tile of fallbackTiles) {
+      for (const tile of lookup(viewportBounds, fallbackZoom)) {
         if (tile.state === 'loaded' && tile.image && !addedIds.has(tile.id)) {
           result.push(tile);
           addedIds.add(tile.id);
@@ -362,6 +516,11 @@ export class TileManager {
    */
   reset(): void {
     this.cancelAll();
+    if (this.lazy) {
+      // Materialized tiles are pure cache — dropping them is the cheapest reset.
+      this.tiles.clear();
+      return;
+    }
     for (const tile of this.tiles.values()) {
       tile.state = 'pending';
       tile.image = undefined;
@@ -403,25 +562,23 @@ export class TileManager {
     return 0;
   }
 
-  /**
-   * Get status of a specific tile
-   */
   /** Count how many tiles are visible at a given zoom level */
   getVisibleTileCount(viewportBounds: Rect, zoom: number): number {
     return this.getVisibleTiles(viewportBounds, zoom).length;
   }
 
+  /**
+   * Get status of a specific tile
+   */
   getTileStatus(zoom: number, col: number, row: number): string {
-    const tree = this.quadTrees.get(zoom);
-    if (!tree) return 'no-tree';
-
-    const tiles = tree.all();
-    for (const tile of tiles) {
-      if (tile.x === col && tile.y === row) {
-        return tile.state;
-      }
+    const tile = this.tiles.get(`${zoom}_${col}_${row}`);
+    if (tile) {
+      return tile.state;
     }
-    return 'not-found';
+    if (this.lazy) {
+      return this.manifest.zoomLevels.some(l => l.zoom === zoom) ? 'not-materialized' : 'no-tree';
+    }
+    return this.quadTrees.has(zoom) ? 'not-found' : 'no-tree';
   }
 
   /**
