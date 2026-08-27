@@ -23,9 +23,10 @@ export function buildMediaUrl(options: MediaUrlOptions): string {
     width,
     height,
     format = 'webp',
-    quality = 85,
+    quality,
     trim = APP_CONFIG.media?.useTrimmedImages ?? false,
   } = options;
+  const resolvedQuality = quality ?? (format === 'mp4' ? undefined : 85);
 
   const params = new URLSearchParams();
   params.set('id', storageId.toString());
@@ -33,13 +34,21 @@ export function buildMediaUrl(options: MediaUrlOptions): string {
   if (width) params.set('width', width.toString());
   if (height) params.set('height', height.toString());
   params.set('format', format);
-  params.set('quality', quality.toString());
+  if (resolvedQuality !== undefined) {
+    params.set('quality', resolvedQuality.toString());
+  }
 
   if (trim) {
     params.set('trim', 'true');
   }
 
-  return `https://share.arkturian.com/proxy.php?${params.toString()}`;
+  const endpoint = APP_CONFIG.mediaProxyUrl || '/proxy.php';
+  const separator = endpoint.includes('?')
+    ? endpoint.endsWith('?') || endpoint.endsWith('&')
+      ? ''
+      : '&'
+    : '?';
+  return `${endpoint}${separator}${params.toString()}`;
 }
 
 /**

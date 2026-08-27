@@ -417,7 +417,7 @@ export class ImageLoadQueue<T = any> {
    * 2. Cache HIT: Return instantly (0ms network time!)
    * 3. Cache MISS: Fetch from network, cache blob, return image
    *
-   * CORS is now enabled on share.arkturian.com/proxy.php
+   * The configured media proxy is expected to provide CORS headers.
    */
   private async loadImage(url: string, timeout: number): Promise<HTMLImageElement> {
     // Step 1: Try IndexedDB cache first

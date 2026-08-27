@@ -2,6 +2,7 @@ import type { CSSProperties, ReactNode, FC } from 'react';
 import { useRef, useEffect } from 'react';
 import { usePreloader } from './PreloaderContext';
 import type { PreloaderConfig } from './types';
+import { buildMediaUrl } from '../../utils/MediaUrlBuilder';
 
 interface PreloaderOverlayProps {
   config?: PreloaderConfig;
@@ -24,7 +25,7 @@ export const PreloaderOverlay: FC<PreloaderOverlayProps> = ({
 
   // Build video URL from Storage API
   const videoUrl = backgroundVideoStorageId
-    ? `https://share.arkturian.com/proxy.php?id=${backgroundVideoStorageId}&format=mp4`
+    ? buildMediaUrl({ storageId: backgroundVideoStorageId, format: 'mp4' })
     : null;
 
   // Start video playback when loaded
@@ -316,4 +317,3 @@ export const PreloaderOverlay: FC<PreloaderOverlayProps> = ({
     </div>
   );
 };
-

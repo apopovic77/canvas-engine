@@ -1,6 +1,7 @@
 
 import { ProductAttribute } from '../domain/ProductAttribute';
 import type { PrimitiveAttributeValue } from '../domain/ProductAttribute';
+import { buildMediaUrl } from '../utils/MediaUrlBuilder';
 export { ProductAttribute } from '../domain/ProductAttribute';
 export type { PrimitiveAttributeValue } from '../domain/ProductAttribute';
 export { ProductValue } from '../domain/ProductValue';
@@ -176,7 +177,13 @@ export class Product {
     if (media.storage_id) {
       const size = 130;
       const quality = 75;
-      return `https://share.arkturian.com/proxy.php?id=${media.storage_id}&width=${size}&height=${size}&format=webp&quality=${quality}`;
+      return buildMediaUrl({
+        storageId: media.storage_id,
+        width: size,
+        height: size,
+        format: 'webp',
+        quality,
+      });
     }
 
     // Fallback to Shopify CDN
@@ -189,7 +196,13 @@ export class Product {
 
     // Prefer Storage API for optimized images (800px max dimension WebP, via proxy)
     if (media.storage_id) {
-      return `https://share.arkturian.com/proxy.php?id=${media.storage_id}&width=800&height=800&format=webp&quality=85`;
+      return buildMediaUrl({
+        storageId: media.storage_id,
+        width: 800,
+        height: 800,
+        format: 'webp',
+        quality: 85,
+      });
     }
 
     // Fallback to Shopify CDN

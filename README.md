@@ -44,6 +44,20 @@ render();
 
 ## Core APIs
 
+### Tenant configuration
+
+Media endpoints default to same-origin URLs. Configure tenant-specific hosts once,
+before creating renderers or products:
+
+```typescript
+import { configureCanvasEngine } from '@apopovic77/canvas-engine';
+
+configureCanvasEngine({
+  storageApiUrl: 'https://storage.example.com',
+  mediaProxyUrl: 'https://media.example.com/proxy',
+});
+```
+
 ### ViewportTransform
 Manages viewport zoom, pan, and bounds:
 

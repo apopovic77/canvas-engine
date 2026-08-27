@@ -1,6 +1,26 @@
 // Core rendering
 export { CanvasRenderer } from './render/CanvasRenderer';
 
+// Tenant-aware runtime configuration and media URLs
+export {
+  APP_CONFIG,
+  AppConfig,
+  configureCanvasEngine,
+  getCanvasEngineConfig,
+  resetCanvasEngineConfig,
+} from './config/AppConfig';
+export type {
+  CanvasEngineConfig,
+  CanvasEngineConfigInput,
+  CanvasEngineMediaConfig,
+} from './config/AppConfig';
+export {
+  buildHighResUrl,
+  buildMediaUrl,
+  buildThumbnailUrl,
+} from './utils/MediaUrlBuilder';
+export type { MediaUrlOptions } from './utils/MediaUrlBuilder';
+
 // Viewport & Transform
 export { ViewportTransform } from './utils/ViewportTransform';
 export type { ContentBounds } from './utils/ViewportTransform';

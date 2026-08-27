@@ -1,6 +1,6 @@
 {
   "name": "@apopovic77/canvas-engine",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "High-performance canvas-based rendering engine with zoom, pan, and layout system",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -12,7 +12,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
-    "test": "echo \"No tests yet\" && exit 0",
+    "test": "tsc -p tsconfig.test.json && node --test tests/*.test.cjs",
     "prepublishOnly": "npm run build"
   },
   "keywords": [

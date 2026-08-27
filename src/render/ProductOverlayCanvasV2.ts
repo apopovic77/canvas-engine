@@ -1,4 +1,5 @@
 import type { Product } from '../types/Product';
+import { buildMediaUrl } from '../utils/MediaUrlBuilder';
 
 /**
  * Modern Product Overlay Style (Blue gradient design)
@@ -114,7 +115,13 @@ export class ProductOverlayCanvasV2 {
     let imageUrl = heroMedia.src;
 
     if (storageId) {
-      imageUrl = `https://share.arkturian.com/proxy.php?id=${storageId}&width=800&height=800&format=webp&quality=85`;
+      imageUrl = buildMediaUrl({
+        storageId,
+        width: 800,
+        height: 800,
+        format: 'webp',
+        quality: 85,
+      });
     }
 
     if (this.imageCache.has(imageUrl)) {
