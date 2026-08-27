@@ -50,7 +50,7 @@ Media endpoints default to same-origin URLs. Configure tenant-specific hosts onc
 before creating renderers or products:
 
 ```typescript
-import { configureCanvasEngine } from '@apopovic77/canvas-engine';
+import { configureCanvasEngine } from '@arkturian/canvas-engine';
 
 configureCanvasEngine({
   storageApiUrl: 'https://storage.example.com',
