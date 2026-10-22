@@ -527,6 +527,13 @@ export class TileMapRenderer {
       // not before the target has finished its fade-in.
       if (tile.zoom > zoom && allTargetFadedIn) continue;
 
+      // Same rule for fallback-DOWN: once the target layer covers the
+      // viewport, every coarser level underneath is invisible overdraw.
+      // getTilesToRender returns ALL lower levels, so at zoom 6 the viewport
+      // was painted ~6× per frame (measured 2026-10-22: 4 target + 11
+      // fallback tiles, 6–7 → 31–34 FPS at DPR 2 when dropped).
+      if (tile.zoom < zoom && allTargetFadedIn) continue;
+
       const opacity = this.getTileOpacity(tile);
       if (opacity <= 0) continue;
 
