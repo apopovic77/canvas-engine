@@ -57,6 +57,8 @@ export class TileManager {
   private urlResolver: ((zoom: number, x: number, y: number) => string) | null;
 
   private currentZoom: number = 0;
+  /** Fraction of a finer level's native scale at which it takes over (1 = only at 1:1). */
+  detailThreshold: number = 1;
   /** Monotonic LRU clock — bumped per visibility query, stamped on touched tiles. */
   private touchClock: number = 0;
 
@@ -206,6 +208,9 @@ export class TileManager {
    */
   getOptimalZoom(viewportScale: number): number {
     const { zoomLevels } = this.manifest;
+    // detailThreshold < 1 switches to the finer level earlier (0.5 = as soon
+    // as its tiles are shown at half size): sharper map, more tiles.
+    viewportScale /= this.detailThreshold;
 
     // Find the zoom level where tile pixels roughly match screen pixels
     // Higher viewportScale means we're zoomed in and need higher resolution tiles
